@@ -106,6 +106,10 @@ def setParams(gassslice, w, s, f, gass=False):
 
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
 
+# The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
+# which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
+# makemask just makes sure that nothing outside that circle is counted as data.
+
 def makemask(wkernel, gassslice):
     #gassfile = "/Users/susanclark/Documents/gass_10.zea.fits"
     #gassdata  = pyfits.getdata(gassfile, 0)
@@ -168,7 +172,7 @@ def umask(data, inkernel):
     bindata[subtr_data <= 0] = 0
 
     return bindata
-    
+
 def fast_hough(in_arr, xyt, ntheta):
     incube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)
     out = np.sum(np.sum(incube*xyt,axis=0), axis=0)
