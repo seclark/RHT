@@ -2,8 +2,8 @@
 
 # FAST ROLLING HOUGH TRANSFORM
 
-# wlen : length of a "window" - length of one side of the square of data to be evaluated at one time
-# frac : fraction (percent) of one angle that must be "lit up" to be counted
+# wlen : Diameter of a 'window' - the data to be evaluated at one time
+# frac : fraction (percent) of one angle that must be 'lit up' to be counted
 # smr  : smoothing radius of unsharp mask function.
 # ulen : length of unsharp mask square. Must be at least wlen + smr/2
 
@@ -17,22 +17,23 @@ from astropy import wcs
 from astropy.io import fits
 import scipy as sp
 from scipy.ndimage import filters
-import pyfits
+#import pyfits
 import copy
 
+'''
 # Load in data, set any corrupted data (nans, -999s, etc) to None value. 
 # This is currently a bunch of fnum if-statements: this was to convenience my switching between data sets.
 # Clearly getData is path-dependent.
 
 def getData(first, last, fnum):
     if fnum == 0:
-       # gassfile = "/Users/susanclark/Documents/gass_10.zea.fits"
-        gassfile = "/share/galfa/gass_10.zea.fits"
+       # gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
+        gassfile = '/share/galfa/gass_10.zea.fits'
     if fnum == 1:
-        #gassfile = "/Users/susanclark/Documents/gass_11.zea.fits"
-        gassfile = "/share/galfa/gass_11.zea.fits"
+        #gassfile = '/Users/susanclark/Documents/gass_11.zea.fits'
+        gassfile = '/share/galfa/gass_11.zea.fits'
     if fnum == 2:
-        gassfile = "/home/goldston/Download/gass_11_ra270_dec0_ch0-9.zea.fits"
+        gassfile = '/home/goldston/Download/gass_11_ra270_dec0_ch0-9.zea.fits'
 
     if fnum < 4:
         gassdata  = pyfits.getdata(gassfile, 0)
@@ -40,10 +41,10 @@ def getData(first, last, fnum):
 
     if fnum == 4:
     
-        gassdata0 = pyfits.getdata("/share/galfa/gass_10.zea.fits", 0)
+        gassdata0 = pyfits.getdata('/share/galfa/gass_10.zea.fits', 0)
         gassslice0= np.sum(gassdata0[first:62, :, :], axis=0)
 
-        gassdata1 = pyfits.getdata("/share/galfa/gass_11.zea.fits", 0)
+        gassdata1 = pyfits.getdata('/share/galfa/gass_11.zea.fits', 0)
         gassslice1 = np.sum(gassdata1[0:last, :, :], axis=0)
 
         gassslice = gassslice1 + gassslice0
@@ -77,6 +78,19 @@ def getData(first, last, fnum):
     
     return gassslice, datay, datax
 
+'''
+def test():
+	return None 
+
+def getData(filename):
+    print 'Hello tester'
+    #This could replace the specialized code above if I'm using simpler fits images
+    hdulist = fits.open(filename)
+    gassslice = hdulist[0].data
+    x, y = gassslice.shape
+    return gassslice, x, y
+
+
 def setParams(gassslice, w, s, f, gass=False):
     wlen = w #101.0
     frac = f #0.70
@@ -88,6 +102,7 @@ def setParams(gassslice, w, s, f, gass=False):
     ucntr = np.floor(ulen/2)
     wcntr = np.floor(wlen/2)
 
+    #This integer ntheta is confusing to me. Mary says it has to do with coordinates?
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))  
     dtheta = np.pi/ntheta
     theta = np.arange(0, np.pi, dtheta)
@@ -101,17 +116,18 @@ def setParams(gassslice, w, s, f, gass=False):
     else:
         mask = None
 
-       # xyt = np.load("xyt2_101_223.npy")
-       # mask = np.load("w101_mask.npy")
+       # xyt = np.load('xyt2_101_223.npy')
+       # mask = np.load('w101_mask.npy')
 
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
 
+'''
 # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
 # which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
 # makemask just makes sure that nothing outside that circle is counted as data.
 
 def makemask(wkernel, gassslice):
-    #gassfile = "/Users/susanclark/Documents/gass_10.zea.fits"
+    #gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
     #gassdata  = pyfits.getdata(gassfile, 0)
     #gassslice = gassdata[45, :, :]
     
@@ -126,7 +142,7 @@ def makemask(wkernel, gassslice):
     w.wcs.crpix = [1.125000000E3, 1.125000000E3]
     w.wcs.cdelt = np.array([-8.00000000E-2, 8.00000000E-2])
     w.wcs.crval = [0.00000000E0, -9.00000000E1]
-    w.wcs.ctype = ["RA---ZEA", "DEC--ZEA"]
+    w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
     
     worldc = w.wcs_pix2world(pixcrd, 1)
     
@@ -142,6 +158,8 @@ def makemask(wkernel, gassslice):
     gg[gmconv == np.max(gmconv)] = 1
     
     return gg
+
+'''
 
 #Performs a circle-cut of given radius on inkernel.    
 def circ_kern(inkernel, radius):
@@ -212,7 +230,8 @@ def houghnew(img, theta=None, idl=False):
     
     if idl == True:
         print 'idl values'
-        ntheta = math.ceil((np.pi*np.sqrt(2)*((wx-1)/2.0)))   
+        #Here's that ntheta again..
+        ntheta = math.ceil((np.pi*np.sqrt(2)*((wx-1)/2.0)))  
         theta = np.arange(0, np.pi, np.pi/ntheta)
         dtheta = np.pi/ntheta
 
@@ -263,7 +282,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     wkernel = circ_kern(wsquare1, wlen)
 
     xyt = all_thetas(wkernel, theta)
-    print xyt.shape, "xyt shape"
+    print xyt.shape, 'xyt shape'
     
     #unsharp mask the whole data set
     udata = umask(data, kernel)
@@ -320,7 +339,12 @@ print 'processing galfa'
 #To run the code, three things need to be called: getData, setParams, and window_step. The output is saved as follows
 #(this could easily be wrapped, it just currently isn't).
 
-gassslice, datay, datax = getData('null',4,6)
+#Modified the getData function and got it to run on my pc!
+gassslice, datay, datax = getData('test.fits')  #getData('null',4,6)
+print 'Successfully got Data! Stopping program.'
+exit()
+
+#These I can work on next
 wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 125, 5, 0.70)
 Hthets, Hi, Hj = window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) 
 
@@ -328,7 +352,7 @@ hi = np.array(Hi)
 hj = np.array(Hj)
 hthets = np.array(Hthets)
 
-np.save("galfa_hi_w125_s5_t70_4_0to4500_masked.npy", hi)
-np.save("galfa_hj_w125_s5_t70_4_0to4500_masked.npy", hj)
-np.save("galfa_hthets_w125_s5_t70_4_0to4500_masked.npy", hthets)
+np.save('galfa_hi_w125_s5_t70_4_0to4500_masked.npy', hi)
+np.save('galfa_hj_w125_s5_t70_4_0to4500_masked.npy', hj)
+np.save('galfa_hthets_w125_s5_t70_4_0to4500_masked.npy', hthets)
 
