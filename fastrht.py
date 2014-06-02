@@ -79,22 +79,20 @@ def getData(first, last, fnum):
     return gassslice, datay, datax
 
 '''
-def test():
-	return None 
 
 def getData(filename):
-    print 'Hello tester'
     #This could replace the specialized code above if I'm using simpler fits images
-    hdulist = fits.open(filename)
-    gassslice = hdulist[0].data
-    x, y = gassslice.shape
+    hdulist = fits.open(filename) #Opens HDU list
+    gassslice = hdulist[0].data #Reads all data as an array
+    x, y = gassslice.shape #Gets dimensions
     return gassslice, x, y
 
-
 def setParams(gassslice, w, s, f, gass=False):
-    wlen = w #101.0
-    frac = f #0.70
-    smr = s #11.0
+    wlen = w #101.0 #Window diameter
+    frac = f #0.70 #Theta-power threshold to store
+    smr = s #11.0 #Smoothing radius
+
+    #-------------------------------- I think I understand up to this line
     ulen = np.ceil(wlen + smr/2) #Must be odd
     
     if np.mod(ulen, 2) == 0:
@@ -102,7 +100,6 @@ def setParams(gassslice, w, s, f, gass=False):
     ucntr = np.floor(ulen/2)
     wcntr = np.floor(wlen/2)
 
-    #This integer ntheta is confusing to me. Mary says it has to do with coordinates?
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))  
     dtheta = np.pi/ntheta
     theta = np.arange(0, np.pi, dtheta)
@@ -161,7 +158,8 @@ def makemask(wkernel, gassslice):
 
 '''
 
-#Performs a circle-cut of given radius on inkernel.    
+#Performs a circle-cut of given radius on inkernel.
+#This is the cookie cutter, right? Outkernel is 0 anywhere outside the window.    
 def circ_kern(inkernel, radius):
     #These are all the possible (m,n) indices in the image space, centered on center pixel
     mnvals = np.indices((len(inkernel), len(inkernel)))
@@ -179,6 +177,7 @@ def circ_kern(inkernel, radius):
 def umask(data, inkernel):    
     outdata = filters.correlate(data, weights=inkernel)
     
+    #I don't understand what kernweight does..
     #Our convolution has scaled outdata by sum(kernel), so we will divide out these weights.
     kernweight = np.sum(inkernel, axis=0)
     kernweight = np.sum(kernweight, axis=0)
@@ -341,13 +340,15 @@ print 'processing galfa'
 
 #Modified the getData function and got it to run on my pc!
 gassslice, datay, datax = getData('test.fits')  #getData('null',4,6)
-print 'Successfully got Data! Stopping program.'
+print 'Successfully got Data!'
+
+wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 125, 5, 0.70)
+print 'Successfully set Params! Stopping program.'
 exit()
 
-#These I can work on next
-wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 125, 5, 0.70)
-Hthets, Hi, Hj = window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) 
 
+#These I can work on next
+Hthets, Hi, Hj = window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) 
 hi = np.array(Hi)
 hj = np.array(Hj)
 hthets = np.array(Hthets)
