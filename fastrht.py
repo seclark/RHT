@@ -79,7 +79,7 @@ def getData(first, last, fnum):
     return gassslice, datay, datax
 
 '''
-
+#------------------------------ Ok with this >
 def getData(filename):
     #This could replace the specialized code above if I'm using simpler fits images
     hdulist = fits.open(filename) #Opens HDU list
@@ -91,8 +91,12 @@ def setParams(gassslice, w, s, f, gass=False):
     wlen = w #101.0 #Window diameter
     frac = f #0.70 #Theta-power threshold to store
     smr = s #11.0 #Smoothing radius
-
-    #-------------------------------- I think I understand up to this line
+	#------------------------------ < Until Here.
+    
+	'''
+	Here in setParams, I'm not sure why ntheta is picked.
+	Also, I don't know what ucenter gets used for.
+	'''
     ulen = np.ceil(wlen + smr/2) #Must be odd
     
     if np.mod(ulen, 2) == 0:
@@ -101,6 +105,8 @@ def setParams(gassslice, w, s, f, gass=False):
     wcntr = np.floor(wlen/2)
 
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))  
+
+    #------------------------------ Ok with this >
     dtheta = np.pi/ntheta
     theta = np.arange(0, np.pi, dtheta)
     
@@ -111,12 +117,13 @@ def setParams(gassslice, w, s, f, gass=False):
     if gass==True:
         mask = makemask(wkernel, gassslice)
     else:
-        mask = None
+        mask = None #Default is no mask
 
        # xyt = np.load('xyt2_101_223.npy')
        # mask = np.load('w101_mask.npy')
 
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
+#------------------------------ < Until Here.
 
 '''
 # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
@@ -158,8 +165,9 @@ def makemask(wkernel, gassslice):
 
 '''
 
+#------------------------------ Ok with this >
 #Performs a circle-cut of given radius on inkernel.
-#This is the cookie cutter, right? Outkernel is 0 anywhere outside the window.    
+#Outkernel is 0 anywhere outside the window.    
 def circ_kern(inkernel, radius):
     #These are all the possible (m,n) indices in the image space, centered on center pixel
     mnvals = np.indices((len(inkernel), len(inkernel)))
@@ -172,6 +180,13 @@ def circ_kern(inkernel, radius):
     outkernel[rads > radius/2] = 0
     
     return outkernel
+
+'''
+I was playing with this in the scrap.py file and think I get it better now.
+#import scrap
+#print scrap.ring(20, 6, 12) 
+'''
+#------------------------------ < Until Here.
     
 #Unsharp mask. Returns binary data.
 def umask(data, inkernel):    
@@ -195,23 +210,26 @@ def fast_hough(in_arr, xyt, ntheta):
     out = np.sum(np.sum(incube*xyt,axis=0), axis=0)
     
     return out        
-    
+
+
+#------------------------------ Got it >
 def all_thetas(window, thetbins):
-    wx, wy = window.shape
-    ntheta = len(thetbins)
+    wx, wy = window.shape #Parse x/y dimensions
+    ntheta = len(thetbins) #Parse height in theta
     
-    # output has dimensions (x, y, theta)
+    #Makes prism; output has dimensions (x, y, theta)
     out = np.zeros((wx, wy, ntheta), np.int_)
     
     for i in xrange(wx):
         for j in xrange(wy):
-            # create new single-pixel image
+            #At each x/y value, create new single-pixel image
             w_1 = np.zeros((wx, wy), np.float_)
             
             # run the Hough for each point one at a time
             if window[i,j] == 1:
                 w_1[i,j] = 1
-                H, thets, dist = houghnew(w_1, thetbins)
+                #------------------------------ < Until Here.
+                H, thets, dist = houghnew(w_1, thetbins) 
                 rel = H[np.floor(len(dist)/2), :]
                 out[i, j, :] = rel
       
@@ -273,14 +291,15 @@ def houghnew(img, theta=None, idl=False):
 
     return out, theta, bins
 
-
+#------------------------------ Got it >
 def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):    
     #Circular kernels
-    wsquare1 = np.ones((wlen, wlen), np.int_)
-    kernel = circ_kern(wsquare1, smr) 
-    wkernel = circ_kern(wsquare1, wlen)
+    wsquare1 = np.ones((wlen, wlen), np.int_) #Square of 1s
+    kernel = circ_kern(wsquare1, smr) #Stores an smr-sized circle
+    wkernel = circ_kern(wsquare1, wlen) #And an wlen-sized circle
 
-    xyt = all_thetas(wkernel, theta)
+	#------------------------------ < Until Here.
+    xyt = all_thetas(wkernel, theta) #Not sure 
     print xyt.shape, 'xyt shape'
     
     #unsharp mask the whole data set
@@ -339,7 +358,7 @@ print 'processing galfa'
 #(this could easily be wrapped, it just currently isn't).
 
 #Modified the getData function and got it to run on my pc!
-gassslice, datay, datax = getData('test.fits')  #getData('null',4,6)
+gassslice, datay, datax = getData('test.fits')  #was getData('null',4,6)
 print 'Successfully got Data!'
 
 wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 125, 5, 0.70)
