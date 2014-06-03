@@ -326,6 +326,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 
     #Loop: (j,i) are centerpoints of data window.
     for j in xrange(datay):
+        print j 
         #if j >= ucntr and j < 1125:
         if j >= ucntr and j < (datay - ucntr):
             for i in xrange(datax):
