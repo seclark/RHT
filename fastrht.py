@@ -91,12 +91,11 @@ def setParams(gassslice, w, s, f, gass=False):
     wlen = w #101.0 #Window diameter
     frac = f #0.70 #Theta-power threshold to store
     smr = s #11.0 #Smoothing radius
-	#------------------------------ < Until Here.
-    
-	'''
-	Here in setParams, I'm not sure why ntheta is picked.
-	Also, I don't know what ucenter gets used for.
-	'''
+    #------------------------------ < Until Here.
+	
+	#Here in setParams, I'm not sure why ntheta is picked.
+	#Also, I don't know what ucenter gets used for.
+    var = 'test'
     ulen = np.ceil(wlen + smr/2) #Must be odd
     
     if np.mod(ulen, 2) == 0:
@@ -123,6 +122,7 @@ def setParams(gassslice, w, s, f, gass=False):
        # mask = np.load('w101_mask.npy')
 
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
+
 #------------------------------ < Until Here.
 
 '''
@@ -187,7 +187,7 @@ I was playing with this in the scrap.py file and think I get it better now.
 #print scrap.ring(20, 6, 12) 
 '''
 #------------------------------ < Until Here.
-    
+
 #Unsharp mask. Returns binary data.
 def umask(data, inkernel):    
     outdata = filters.correlate(data, weights=inkernel)
@@ -362,17 +362,15 @@ gassslice, datay, datax = getData('test.fits')  #was getData('null',4,6)
 print 'Successfully got Data!'
 
 wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 125, 5, 0.70)
-print 'Successfully set Params! Stopping program.'
-exit()
+print 'Successfully set Params!'
 
-
-#These I can work on next
+print 'Running window_step...'
 Hthets, Hi, Hj = window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) 
 hi = np.array(Hi)
 hj = np.array(Hj)
 hthets = np.array(Hthets)
 
-np.save('galfa_hi_w125_s5_t70_4_0to4500_masked.npy', hi)
-np.save('galfa_hj_w125_s5_t70_4_0to4500_masked.npy', hj)
-np.save('galfa_hthets_w125_s5_t70_4_0to4500_masked.npy', hthets)
+np.save('test_hi.npy', hi)
+np.save('test_hj.npy', hj)
+np.save('test_hthets.npy', hthets)
 
