@@ -2,8 +2,8 @@
 
 # FAST ROLLING HOUGH TRANSFORM
 
-# wlen : length of a "window" - length of one side of the square of data to be evaluated at one time
-# frac : fraction (percent) of one angle that must be "lit up" to be counted
+# wlen : Diameter of a 'window' - the data to be evaluated at one time
+# frac : fraction (percent) of one angle that must be 'lit up' to be counted
 # smr  : smoothing radius of unsharp mask function.
 # ulen : length of unsharp mask square. Must be at least wlen + smr/2
 
@@ -17,22 +17,23 @@ from astropy import wcs
 from astropy.io import fits
 import scipy as sp
 from scipy.ndimage import filters
-import pyfits
+#import pyfits
 import copy
 
+'''
 # Load in data, set any corrupted data (nans, -999s, etc) to None value. 
 # This is currently a bunch of fnum if-statements: this was to convenience my switching between data sets.
 # Clearly getData is path-dependent.
 
 def getData(first, last, fnum):
     if fnum == 0:
-       # gassfile = "/Users/susanclark/Documents/gass_10.zea.fits"
-        gassfile = "/share/galfa/gass_10.zea.fits"
+       # gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
+        gassfile = '/share/galfa/gass_10.zea.fits'
     if fnum == 1:
-        #gassfile = "/Users/susanclark/Documents/gass_11.zea.fits"
-        gassfile = "/share/galfa/gass_11.zea.fits"
+        #gassfile = '/Users/susanclark/Documents/gass_11.zea.fits'
+        gassfile = '/share/galfa/gass_11.zea.fits'
     if fnum == 2:
-        gassfile = "/home/goldston/Download/gass_11_ra270_dec0_ch0-9.zea.fits"
+        gassfile = '/home/goldston/Download/gass_11_ra270_dec0_ch0-9.zea.fits'
 
     if fnum < 4:
         gassdata  = pyfits.getdata(gassfile, 0)
@@ -40,10 +41,10 @@ def getData(first, last, fnum):
 
     if fnum == 4:
     
-        gassdata0 = pyfits.getdata("/share/galfa/gass_10.zea.fits", 0)
+        gassdata0 = pyfits.getdata('/share/galfa/gass_10.zea.fits', 0)
         gassslice0= np.sum(gassdata0[first:62, :, :], axis=0)
 
-        gassdata1 = pyfits.getdata("/share/galfa/gass_11.zea.fits", 0)
+        gassdata1 = pyfits.getdata('/share/galfa/gass_11.zea.fits', 0)
         gassslice1 = np.sum(gassdata1[0:last, :, :], axis=0)
 
         gassslice = gassslice1 + gassslice0
@@ -77,10 +78,24 @@ def getData(first, last, fnum):
     
     return gassslice, datay, datax
 
+'''
+#------------------------------ Ok with this >
+def getData(filename):
+    #This could replace the specialized code above if I'm using simpler fits images
+    hdulist = fits.open(filename) #Opens HDU list
+    gassslice = hdulist[0].data #Reads all data as an array
+    x, y = gassslice.shape #Gets dimensions
+    return gassslice, x, y
+
 def setParams(gassslice, w, s, f, gass=False):
-    wlen = w #101.0
-    frac = f #0.70
-    smr = s #11.0
+    wlen = w #101.0 #Window diameter
+    frac = f #0.70 #Theta-power threshold to store
+    smr = s #11.0 #Smoothing radius
+    #------------------------------ < Until Here.
+	
+	#Here in setParams, I'm not sure why ntheta is picked.
+	#Also, I don't know what ucenter gets used for.
+    var = 'test'
     ulen = np.ceil(wlen + smr/2) #Must be odd
     
     if np.mod(ulen, 2) == 0:
@@ -89,6 +104,8 @@ def setParams(gassslice, w, s, f, gass=False):
     wcntr = np.floor(wlen/2)
 
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))  
+
+    #------------------------------ Ok with this >
     dtheta = np.pi/ntheta
     theta = np.arange(0, np.pi, dtheta)
     
@@ -99,19 +116,22 @@ def setParams(gassslice, w, s, f, gass=False):
     if gass==True:
         mask = makemask(wkernel, gassslice)
     else:
-        mask = None
+        mask = None #Default is no mask
 
-       # xyt = np.load("xyt2_101_223.npy")
-       # mask = np.load("w101_mask.npy")
+       # xyt = np.load('xyt2_101_223.npy')
+       # mask = np.load('w101_mask.npy')
 
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
 
+#------------------------------ < Until Here.
+
+'''
 # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
 # which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
 # makemask just makes sure that nothing outside that circle is counted as data.
 
 def makemask(wkernel, gassslice):
-    #gassfile = "/Users/susanclark/Documents/gass_10.zea.fits"
+    #gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
     #gassdata  = pyfits.getdata(gassfile, 0)
     #gassslice = gassdata[45, :, :]
     
@@ -126,7 +146,7 @@ def makemask(wkernel, gassslice):
     w.wcs.crpix = [1.125000000E3, 1.125000000E3]
     w.wcs.cdelt = np.array([-8.00000000E-2, 8.00000000E-2])
     w.wcs.crval = [0.00000000E0, -9.00000000E1]
-    w.wcs.ctype = ["RA---ZEA", "DEC--ZEA"]
+    w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
     
     worldc = w.wcs_pix2world(pixcrd, 1)
     
@@ -143,7 +163,11 @@ def makemask(wkernel, gassslice):
     
     return gg
 
-#Performs a circle-cut of given radius on inkernel.    
+'''
+
+#------------------------------ Ok with this >
+#Performs a circle-cut of given radius on inkernel.
+#Outkernel is 0 anywhere outside the window.    
 def circ_kern(inkernel, radius):
     #These are all the possible (m,n) indices in the image space, centered on center pixel
     mnvals = np.indices((len(inkernel), len(inkernel)))
@@ -156,11 +180,19 @@ def circ_kern(inkernel, radius):
     outkernel[rads > radius/2] = 0
     
     return outkernel
-    
+
+'''
+I was playing with this in the scrap.py file and think I get it better now.
+#import scrap
+#print scrap.ring(20, 6, 12) 
+'''
+#------------------------------ < Until Here.
+
 #Unsharp mask. Returns binary data.
 def umask(data, inkernel):    
     outdata = filters.correlate(data, weights=inkernel)
     
+    #I don't understand what kernweight does..
     #Our convolution has scaled outdata by sum(kernel), so we will divide out these weights.
     kernweight = np.sum(inkernel, axis=0)
     kernweight = np.sum(kernweight, axis=0)
@@ -178,23 +210,26 @@ def fast_hough(in_arr, xyt, ntheta):
     out = np.sum(np.sum(incube*xyt,axis=0), axis=0)
     
     return out        
-    
+
+
+#------------------------------ Got it >
 def all_thetas(window, thetbins):
-    wx, wy = window.shape
-    ntheta = len(thetbins)
+    wx, wy = window.shape #Parse x/y dimensions
+    ntheta = len(thetbins) #Parse height in theta
     
-    # output has dimensions (x, y, theta)
+    #Makes prism; output has dimensions (x, y, theta)
     out = np.zeros((wx, wy, ntheta), np.int_)
     
     for i in xrange(wx):
         for j in xrange(wy):
-            # create new single-pixel image
+            #At each x/y value, create new single-pixel image
             w_1 = np.zeros((wx, wy), np.float_)
             
             # run the Hough for each point one at a time
             if window[i,j] == 1:
                 w_1[i,j] = 1
-                H, thets, dist = houghnew(w_1, thetbins)
+                #------------------------------ < Until Here.
+                H, thets, dist = houghnew(w_1, thetbins) 
                 rel = H[np.floor(len(dist)/2), :]
                 out[i, j, :] = rel
       
@@ -212,7 +247,8 @@ def houghnew(img, theta=None, idl=False):
     
     if idl == True:
         print 'idl values'
-        ntheta = math.ceil((np.pi*np.sqrt(2)*((wx-1)/2.0)))   
+        #Here's that ntheta again..
+        ntheta = math.ceil((np.pi*np.sqrt(2)*((wx-1)/2.0)))  
         theta = np.arange(0, np.pi, np.pi/ntheta)
         dtheta = np.pi/ntheta
 
@@ -255,15 +291,16 @@ def houghnew(img, theta=None, idl=False):
 
     return out, theta, bins
 
-
+#------------------------------ Got it >
 def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):    
     #Circular kernels
-    wsquare1 = np.ones((wlen, wlen), np.int_)
-    kernel = circ_kern(wsquare1, smr) 
-    wkernel = circ_kern(wsquare1, wlen)
+    wsquare1 = np.ones((wlen, wlen), np.int_) #Square of 1s
+    kernel = circ_kern(wsquare1, smr) #Stores an smr-sized circle
+    wkernel = circ_kern(wsquare1, wlen) #And an wlen-sized circle
 
-    xyt = all_thetas(wkernel, theta)
-    print xyt.shape, "xyt shape"
+	#------------------------------ < Until Here.
+    xyt = all_thetas(wkernel, theta) #Not sure 
+    print xyt.shape, 'xyt shape'
     
     #unsharp mask the whole data set
     udata = umask(data, kernel)
@@ -289,6 +326,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 
     #Loop: (j,i) are centerpoints of data window.
     for j in xrange(datay):
+        print j 
         #if j >= ucntr and j < 1125:
         if j >= ucntr and j < (datay - ucntr):
             for i in xrange(datax):
@@ -320,15 +358,20 @@ print 'processing galfa'
 #To run the code, three things need to be called: getData, setParams, and window_step. The output is saved as follows
 #(this could easily be wrapped, it just currently isn't).
 
-gassslice, datay, datax = getData('null',4,6)
-wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 125, 5, 0.70)
-Hthets, Hi, Hj = window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) 
+#Modified the getData function and got it to run on my pc!
+gassslice, datay, datax = getData('test.fits')  #was getData('null',4,6)
+print 'Successfully got Data!'
 
+wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 125, 5, 0.70)
+print 'Successfully set Params!'
+
+print 'Running window_step...'
+Hthets, Hi, Hj = window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) 
 hi = np.array(Hi)
 hj = np.array(Hj)
 hthets = np.array(Hthets)
 
-np.save("galfa_hi_w125_s5_t70_4_0to4500_masked.npy", hi)
-np.save("galfa_hj_w125_s5_t70_4_0to4500_masked.npy", hj)
-np.save("galfa_hthets_w125_s5_t70_4_0to4500_masked.npy", hthets)
+np.save('test_hi.npy', hi)
+np.save('test_hj.npy', hj)
+np.save('test_hthets.npy', hthets)
 
