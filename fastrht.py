@@ -19,7 +19,7 @@ import scipy as sp
 from scipy.ndimage import filters, imread
 import copy
 
-TEXTWIDTH = 30
+TEXTWIDTH = 40
 
 def getData(filename):
     #This could replace the specialized code above if I'm using simple images
@@ -298,74 +298,126 @@ def main(filepath=None, silent=False):
     np.save(hthets_filename, hthets)
     print '3/3:: Successfully Saved Data!'
 
-def interpret(filepath=None):
-    print '*'*TEXTWIDTH
-    print 'Rolling Hough Transform Interpreter by Lowell Schudel'
-    print '*'*TEXTWIDTH
-    
-    #Input Handling
+def interpret(filepath=None, interactive=False):
     '''
-    Failures:
-    0- Bad filepath
-        0.1-
-    1- Output files not found
-        1.1- Did not choose to reananlyze
-        1.2- Generated output files, reinterpreted
-        1.3- Failed to find image file
-    2- Data reading failure
-        2.1
-
-    Exits:
-    0- No image filepath entered
-    1- Outputs not found, no new analysis
+    Using name_hi.npy, name_hj.npy, name_hthets.npy,
+    Prodces:
+        Backprojection --> name_backproj.npy
+        Backprojection Overlayed on Image --> name_overlay.npy 
+        ThetaSpectrum --> name_spectrum.npy
     '''
 
-    #Filename Assignment
-    if filepath==None:
+    if !interactive:
         try:
-            filepath = raw_input('Please enter the relative path of a file to analyze:')         
-        except EOFError:
-            exit('Exiting interpret: 0') #Exit 0
-        
-    try:
-        filename = filepath.split(".")[0]
-    except IndexError:
-        print 'Filename does not appear to have an extension'
-    hi_filename = filename + '_hi.npy'
-    hj_filename = filename + '_hj.npy'
-    hthets_filename = filename + '_hthets.npy'
-    
-    
-    from os.path import isfile
-    if !(isfile(hi_filename) and isfile(hj_filename) and isfile(hthets_filename)): 
-        print 'Output files for this image were not found.'
-        from distutils.util import strtobool
-        try:
-            reanalyze = strtobool(raw_input('Would you like to reanalyze the image? y/[n]'))
-        except ValueError:
-            #No choice
-            reanalyze = False #Failure 1.1 
-        except EOFError:
-            #Default choice
-            realanyze = False 
-
-        if realanyze 
-            if isfile(filepath):
-                main(filepath, silent=True)
-                print 'File analyzed successfully. Reinterpreting...' #Failure 1.2
-                interpret(filepath)
-            else:
-                print 'Nonexistant image file, please try another.' #Failure 1.3
-        else:
-            exit('Exiting interpret: 1') #Exit 1
-
-    else: 
-        from numpy import load
-        try:
+            filename = filepath.split(".")[0]
+            hi_filename = filename + '_hi.npy'
+            hj_filename = filename + '_hj.npy'
+            hthets_filename = filename + '_hthets.npy'
+            import numpy as np
             hi = np.load(hi_filename)
             hj = np.load(hj_filename)
             hthets = np.load(hthets_filename)
-        except IOError: 
-            print 'One or more output files are invalid' #Failure 2.1
+            
+            #Backprojection *Minimum XY Size, coords offset by low*
+            low = (min(hi), min(hj))
+            high = (max(hi), max(hj))
+            small_tflat_xy = np.zeros(np.add(np.subtract(high, low), (1, 1)))
+            coords = np.subtract(zip(hi, hj), low)
+            for c in coords:
+                small_tflat_xy[c[0]][c[1]] = sum(hthets[coords.index(c)])
+            backproj_filename = filename + '_backproj.npy'
+            np.save(backproj_filename, small_tflat_xy)
+
+            #Overlay *Image coords*
+            image, imx, imy = getData(filepath)
+            #np.divide(image, np.amax(image)) #TODO: Image Weighting to 1?
+            large_tflat_xy = np.zeros_like(image)
+            small_shape = small_tflat_xy.shape
+            for a in small_shape[0]:
+                for b in small_shape[1]:
+                    large_tflat_xy[a+low[0]][b+low[1]] = small_tflat_xy[a][b]
+            weight = 1.0 #TODO: Weight by powers of large_tflat_xy
+            overlay = np.multiply(image, np.multiply(large_tflat_xy, weight))
+            overlay_filename = filename + '_overlay.npy'
+            np.save(overlay_filename, overlay)
+
+            #Spectrum *Length ntheta array of theta power for whole image*
+            spectrum = [sum(theta) for theta in zip(hthets)]
+            spectrum_filename = filename + '_overlay.npy'
+            np.save(spectrum_filename, spectrum)
+
+
+        except Exception:
+            pass #Silent, fast failure
+    else:   
+        print '*'*TEXTWIDTH
+        print 'Rolling Hough Transform Interpreter by Lowell Schudel'
+        print '*'*TEXTWIDTH
+        
+        '''
+        Input Handling
+
+        Failures:
+        0- Bad filepath
+            0.1-
+        1- Output files not found
+            1.1- Did not choose to reananlyze
+            1.2- Generated output files, reinterpreted
+            1.3- Failed to find image file
+        2- Data reading failure
+            2.1
+
+        Exits:
+        0- No image filepath entered
+        1- Outputs not found, no new analysis
+        '''
+        from os.path import isfile
+        #Filename Assignment
+        if filepath==None:
+            try:
+                filepath = raw_input('Please enter the relative path of a file to analyze:')         
+            except EOFError:
+                exit('Exiting interpret: 0') #Exit 0
+            
+        try:
+            filename = filepath.split(".")[0]
+        except IndexError:
+            print 'Filename does not appear to have an extension'
+        hi_filename = filename + '_hi.npy'
+        hj_filename = filename + '_hj.npy'
+        hthets_filename = filename + '_hthets.npy'
+        
+        
+        
+        if !(isfile(hi_filename) and isfile(hj_filename) and isfile(hthets_filename)): 
+            print 'Output files for this image were not found.'
+            from distutils.util import strtobool
+            try:
+                reanalyze = strtobool(raw_input('Would you like to reanalyze the image? y/[n]'))
+            except ValueError:
+                #No choice
+                reanalyze = False #Failure 1.1 
+            except EOFError:
+                #Default choice
+                realanyze = False 
+
+            if realanyze 
+                if isfile(filepath):
+                    main(filepath, silent=True)
+                    print 'File analyzed successfully. Reinterpreting...' #Failure 1.2
+                    interpret(filepath)
+                else:
+                    print 'Nonexistant image file, please try another.' #Failure 1.3
+            else:
+                exit('Exiting interpret: 1') #Exit 1
+
+        else: 
+            from numpy import load
+            try:
+                hi = np.load(hi_filename)
+                hj = np.load(hj_filename)
+                hthets = np.load(hthets_filename)
+            except IOError: 
+                print 'One or more output files are invalid' #Failure 2.1
 
 
