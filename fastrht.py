@@ -307,7 +307,7 @@ def interpret(filepath=None, interactive=False):
         ThetaSpectrum --> name_spectrum.npy
     '''
 
-    if !interactive:
+    if not interactive:
         try:
             filename = filepath.split(".")[0]
             hi_filename = filename + '_hi.npy'
@@ -317,37 +317,43 @@ def interpret(filepath=None, interactive=False):
             hi = np.load(hi_filename)
             hj = np.load(hj_filename)
             hthets = np.load(hthets_filename)
+            print 'Loaded'
             
             #Backprojection *Minimum XY Size, coords offset by low*
-            low = (min(hi), min(hj))
-            high = (max(hi), max(hj))
+            low = [min(hi), min(hj)]
+            high = [max(hi), max(hj)]
             small_tflat_xy = np.zeros(np.add(np.subtract(high, low), (1, 1)))
+            #print small_tflat_xy.shape, 'small'
             coords = np.subtract(zip(hi, hj), low)
-            for c in coords:
-                small_tflat_xy[c[0]][c[1]] = sum(hthets[coords.index(c)])
+            #print coords.shape, 'coords'
+            for c in range(len(coords)):
+                #print coords[c][0], coords[c][1]
+                small_tflat_xy[coords[c][0]][coords[c][1]] = np.sum(hthets[c])
             backproj_filename = filename + '_backproj.npy'
-            np.save(backproj_filename, small_tflat_xy)
+            np.save(backproj_filename, np.array(small_tflat_xy))
+            print 'Backproj'
 
             #Overlay *Image coords*
             image, imx, imy = getData(filepath)
             #np.divide(image, np.amax(image)) #TODO: Image Weighting to 1?
             large_tflat_xy = np.zeros_like(image)
             small_shape = small_tflat_xy.shape
-            for a in small_shape[0]:
-                for b in small_shape[1]:
+            for a in range(small_shape[0]):
+                for b in range(small_shape[1]):
                     large_tflat_xy[a+low[0]][b+low[1]] = small_tflat_xy[a][b]
             weight = 1.0 #TODO: Weight by powers of large_tflat_xy
             overlay = np.multiply(image, np.multiply(large_tflat_xy, weight))
             overlay_filename = filename + '_overlay.npy'
-            np.save(overlay_filename, overlay)
+            np.save(overlay_filename, np.array(overlay))
 
             #Spectrum *Length ntheta array of theta power for whole image*
-            spectrum = [sum(theta) for theta in zip(hthets)]
-            spectrum_filename = filename + '_overlay.npy'
-            np.save(spectrum_filename, spectrum)
+            spectrum = [sum(theta) for theta in hthets]
+            spectrum_filename = filename + '_spectrum.npy'
+            np.save(spectrum_filename, np.array(spectrum))
 
 
-        except Exception:
+        except Exception as e:
+            print e.args #TODO
             pass #Silent, fast failure
     else:   
         print '*'*TEXTWIDTH
@@ -389,19 +395,19 @@ def interpret(filepath=None, interactive=False):
         
         
         
-        if !(isfile(hi_filename) and isfile(hj_filename) and isfile(hthets_filename)): 
+        if not(isfile(hi_filename) and isfile(hj_filename) and isfile(hthets_filename)): 
             print 'Output files for this image were not found.'
             from distutils.util import strtobool
             try:
-                reanalyze = strtobool(raw_input('Would you like to reanalyze the image? y/[n]'))
+                redo = strtobool(raw_input('Would you like to reanalyze the image? y/[n]'))
             except ValueError:
                 #No choice
-                reanalyze = False #Failure 1.1 
+                redo = False #Failure 1.1 
             except EOFError:
                 #Default choice
-                realanyze = False 
+                redo = False 
 
-            if realanyze 
+            if redo: 
                 if isfile(filepath):
                     main(filepath, silent=True)
                     print 'File analyzed successfully. Reinterpreting...' #Failure 1.2
