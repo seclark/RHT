@@ -16,17 +16,74 @@ import random
 from astropy import wcs
 from astropy.io import fits
 import scipy as sp
-from scipy.ndimage import filters, imread
+from scipy.ndimage import filters
+#import pyfits
 import copy
 
+'''
+# Load in data, set any corrupted data (nans, -999s, etc) to None value. 
+# This is currently a bunch of fnum if-statements: this was to convenience my switching between data sets.
+# Clearly getData is path-dependent.
+
+def getData(first, last, fnum):
+    if fnum == 0:
+       # gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
+        gassfile = '/share/galfa/gass_10.zea.fits'
+    if fnum == 1:
+        #gassfile = '/Users/susanclark/Documents/gass_11.zea.fits'
+        gassfile = '/share/galfa/gass_11.zea.fits'
+    if fnum == 2:
+        gassfile = '/home/goldston/Download/gass_11_ra270_dec0_ch0-9.zea.fits'
+
+    if fnum < 4:
+        gassdata  = pyfits.getdata(gassfile, 0)
+        gassslice = np.sum(gassdata[first:last, :, :], axis=0)
+
+    if fnum == 4:
+    
+        gassdata0 = pyfits.getdata('/share/galfa/gass_10.zea.fits', 0)
+        gassslice0= np.sum(gassdata0[first:62, :, :], axis=0)
+
+        gassdata1 = pyfits.getdata('/share/galfa/gass_11.zea.fits', 0)
+        gassslice1 = np.sum(gassdata1[0:last, :, :], axis=0)
+
+        gassslice = gassslice1 + gassslice0
+        
+    if fnum == 5:
+        hdulist = fits.open('/share/galfa/GC.hi.tb.allgal.fits')
+        gassslice = hdulist[0].data
+        gassslice = np.sum(gassslice[0,first:last, :, :], axis=0)*(-1)
+        
+    if fnum == 6:
+        hdulist = fits.open('/share/galfa/destripe_zenith_WRONG_NAXIS3.fits')
+        gassslice = hdulist[0].data
+        gassslice = gassslice[last, :, 0:4501]
+        gassslice[gassslice < 0] = None
+        
+    if fnum == 7:
+        hdulist = fits.open('/share/galfa/destripe_zenith_WRONG_NAXIS3.fits')
+        gassslice = hdulist[0].data
+        gassslice = gassslice[last, :, 4300:]    
+        gassslice[gassslice < 0] = None    
+        
+    if fnum == 8:
+        hdulist = fits.open('/share/galfa/GC.hi.tb.allgal.fits')
+        gassslice = hdulist[0].data
+        gassslice[gassslice > 120] = None
+        gassslice[gassslice < 0] = None
+        gassslice = gassslice[0,last, :, :]*(-1)
+        
+    datay, datax = np.shape(gassslice)
+    print datay, datax
+    
+    return gassslice, datay, datax
+
+'''
 #------------------------------ Ok with this >
 def getData(filename):
-    #This could replace the specialized code above if I'm using simple images
-    if filename.endswith('.fits'):
-	    hdulist = fits.open(filename) #Opens HDU list
-	    gassslice = hdulist[0].data #Reads all data as an array
-    else:
-		gassslice = imread(filename, True) #Makes B/W array
+    #This could replace the specialized code above if I'm using simpler fits images
+    hdulist = fits.open(filename) #Opens HDU list
+    gassslice = hdulist[0].data #Reads all data as an array
     x, y = gassslice.shape #Gets dimensions
     return gassslice, x, y
 
@@ -35,13 +92,17 @@ def setParams(gassslice, w, s, f, gass=False):
     frac = f #0.70 #Theta-power threshold to store
     smr = s #11.0 #Smoothing radius
     #------------------------------ < Until Here.
-
+	
+	#Here in setParams, I'm not sure why ntheta is picked.
+	#Also, I don't know what ucenter gets used for.
+    var = 'test'
     ulen = np.ceil(wlen + smr/2) #Must be odd
+    
     if np.mod(ulen, 2) == 0:
         ulen += 1
     ucntr = np.floor(ulen/2)
-
     wcntr = np.floor(wlen/2)
+
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))  
 
     #------------------------------ Ok with this >
@@ -62,7 +123,49 @@ def setParams(gassslice, w, s, f, gass=False):
 
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
 
+#------------------------------ < Until Here.
 
+'''
+# The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
+# which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
+# makemask just makes sure that nothing outside that circle is counted as data.
+
+def makemask(wkernel, gassslice):
+    #gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
+    #gassdata  = pyfits.getdata(gassfile, 0)
+    #gassslice = gassdata[45, :, :]
+    
+    datay, datax = np.shape(gassslice)
+    
+    mnvals = np.indices((datax,datay))
+    pixcrd = np.zeros((datax*datay,2), np.float_)
+    pixcrd[:,0] = mnvals[:,:][0].reshape(datax*datay)
+    pixcrd[:,1] = mnvals[:,:][1].reshape(datax*datay)
+    
+    w = wcs.WCS(naxis=2)
+    w.wcs.crpix = [1.125000000E3, 1.125000000E3]
+    w.wcs.cdelt = np.array([-8.00000000E-2, 8.00000000E-2])
+    w.wcs.crval = [0.00000000E0, -9.00000000E1]
+    w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
+    
+    worldc = w.wcs_pix2world(pixcrd, 1)
+    
+    worldcra = worldc[:,0].reshape(datax,datay)
+    worldcdec = worldc[:,1].reshape(datax,datay)
+    
+    gm = np.zeros(gassslice.shape)
+    gm[worldcdec < 0] = 1
+    
+    gmconv = filters.correlate(gm, weights=wkernel)
+    gg = copy.copy(gmconv)
+    gg[gmconv < np.max(gmconv)] = 0
+    gg[gmconv == np.max(gmconv)] = 1
+    
+    return gg
+
+'''
+
+#------------------------------ Ok with this >
 #Performs a circle-cut of given radius on inkernel.
 #Outkernel is 0 anywhere outside the window.    
 def circ_kern(inkernel, radius):
@@ -221,21 +324,15 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     hjapp = Hj.append
     npsum = np.sum
 
-    #Create progress meter
-    def update_progress(progress):
-    	print '\r3/3.. [{0}]%'.format('#'*(100*progress//20))
-
     #Loop: (j,i) are centerpoints of data window.
-    datax, datay = data.shape
-    for j in xrange(datay):        
-        
-        update_progress(j/datay) #For monitoring progress TODO
+    for j in xrange(datay):
+        print j 
+        #if j >= ucntr and j < 1125:
         if j >= ucntr and j < (datay - ucntr):
-            
             for i in xrange(datax):
-                
+                #if i >= 1125 and i < (datax - ucntr):
                 if i >= ucntr and i < (datax - ucntr):
-                    
+                    #if mask[i,j] == 1: #Only necessary for GASS data
                     wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
                     
                     h = npsum(npsum(wcube*xyt,axis=0), axis=0)
@@ -247,52 +344,34 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
                         htapp(hout)
                         hiapp(i)
                         hjapp(j)
+                    
+
         
     end = time.clock()
     print 'Code time %.6f seconds' % (end - start)         
     
     return Hthets, Hi, Hj
 
-#*********************************************************
+#*********************************
+print 'processing galfa'
 
-def main(filepath=None):
-	print '*'*30
-    print 'Fast Rolling Hough Transform by Susan Clark'
-    print '*'*30
-	if filepath==None:
-		filepath = raw_input('Please enter the full relative path of a file to analyze:')
-	
-	print '1/3.. Loading Data'
-	xy_array, datay, datax = getData(filepath)
-	print '1/3.. Successfully Loaded Data!'
+#To run the code, three things need to be called: getData, setParams, and window_step. The output is saved as follows
+#(this could easily be wrapped, it just currently isn't).
 
-	filename = filepath.split(".")[0] #Works if there are no other '.' besides at file extension
-	print '1/3:', filename, datax, datay
+#Modified the getData function and got it to run on my pc!
+gassslice, datay, datax = getData('test.fits')  #was getData('null',4,6)
+print 'Successfully got Data!'
 
-	print '2/3.. Setting Params'
-	#TODO wrap parameter input
-	wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, 125, 5, 0.70)
-	print '2/3.. Successfully Set Params!'
-	print #TODO Summary of Params
+wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 125, 5, 0.70)
+print 'Successfully set Params!'
 
-	print '3/3.. Runnigh Hough Transform'
-	hi_filename = filename + '_hi.npy'
-	hj_filename = filename + '_hj.npy'
-	hthets_filename = filename + '_hthets.npy'
-	print '3/3.. Your Data Will Be Saved As:', hi_filename, hj_filename, hthets_filename 
-	
-	Hthets, Hi, Hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) #TODO progress meter
-	hi = np.array(Hi)
-	hj = np.array(Hj)
-	hthets = np.array(Hthets)
-	np.save(hi_filename, hi)
-	np.save(hj_filename, hj)
-	np.save(hthets_filename, hthets)
-	print '3/3: Successfully Saved Data!'
+print 'Running window_step...'
+Hthets, Hi, Hj = window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) 
+hi = np.array(Hi)
+hj = np.array(Hj)
+hthets = np.array(Hthets)
 
-def interpret(filepath=None):
-    print '*'*20, 'Rolling Hough Transform Results', '*'*20
-    if filepath==None:
-        filepath = raw_input('Please enter the full relative path of a file to analyze:')
-
+np.save('test_hi.npy', hi)
+np.save('test_hj.npy', hj)
+np.save('test_hthets.npy', hthets)
 
