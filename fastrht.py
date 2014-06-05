@@ -19,7 +19,8 @@ import scipy as sp
 from scipy.ndimage import filters, imread
 import copy
 
-#------------------------------ Ok with this >
+TEXTWIDTH = 30
+
 def getData(filename):
     #This could replace the specialized code above if I'm using simple images
     if filename.endswith('.fits'):
@@ -34,7 +35,6 @@ def setParams(gassslice, w, s, f, gass=False):
     wlen = w #101.0 #Window diameter
     frac = f #0.70 #Theta-power threshold to store
     smr = s #11.0 #Smoothing radius
-    #------------------------------ < Until Here.
 
     ulen = np.ceil(wlen + smr/2) #Must be odd
     if np.mod(ulen, 2) == 0:
@@ -44,7 +44,7 @@ def setParams(gassslice, w, s, f, gass=False):
     wcntr = np.floor(wlen/2)
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))  
 
-    #------------------------------ Ok with this >
+    
     dtheta = np.pi/ntheta
     theta = np.arange(0, np.pi, dtheta)
     
@@ -83,7 +83,6 @@ I was playing with this in the scrap.py file and think I get it better now.
 #import scrap
 #print scrap.ring(20, 6, 12) 
 '''
-#------------------------------ < Until Here.
 
 #Unsharp mask. Returns binary data.
 def umask(data, inkernel):    
@@ -125,7 +124,7 @@ def all_thetas(window, thetbins):
             # run the Hough for each point one at a time
             if window[i,j] == 1:
                 w_1[i,j] = 1
-                #------------------------------ < Until Here.
+       
                 H, thets, dist = houghnew(w_1, thetbins) 
                 rel = H[np.floor(len(dist)/2), :]
                 out[i, j, :] = rel
@@ -188,25 +187,38 @@ def houghnew(img, theta=None, idl=False):
 
     return out, theta, bins
 
-#------------------------------ Got it >
-def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):    
+def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask): 
+    #Create progress meter
+    OLDP = 0
+    def update_progress(progress):
+        if progress > 0.0 and progress <= 1.0:
+            p = int(TEXTWIDTH*progress/1.0) 
+            if p > OLDP:
+                print '\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p))
+        elif progress > 0.0 and progress <= 100.0:
+            p = int(TEXTWIDTH*progress/100.0) 
+            if p > OLDP:
+                print '\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p)) 
+        elif progress == 0.0:
+            print '\r3/3.. [{0}]%'.format(' '*TEXTWIDTH)
+                    
+
+    update_progress(0.0)
+    
     #Circular kernels
     wsquare1 = np.ones((wlen, wlen), np.int_) #Square of 1s
     kernel = circ_kern(wsquare1, smr) #Stores an smr-sized circle
     wkernel = circ_kern(wsquare1, wlen) #And an wlen-sized circle
+    xyt = all_thetas(wkernel, theta) #Cylinder of all theta values per point
+    print xyt.shape, 'xyt shape' #TODO
 
-	#------------------------------ < Until Here.
-    xyt = all_thetas(wkernel, theta) #Not sure 
-    print xyt.shape, 'xyt shape'
-    
     #unsharp mask the whole data set
     udata = umask(data, kernel)
     
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(wkernel, xyt, ntheta)
-    
+
     start = time.clock()
-    
     Hthets = []
     Hi = []
     Hj = []
@@ -214,24 +226,20 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     start0=time.clock()
     dcube = np.repeat(udata[:,:,np.newaxis], repeats=ntheta, axis=2)
     end0 = time.clock()
-    print 'cube data', end0-start0
+    print 'cube data', end0-start0 #TODO
     
+
     htapp = Hthets.append
     hiapp = Hi.append
     hjapp = Hj.append
     npsum = np.sum
 
-    #Create progress meter
-    def update_progress(progress):
-    	print '\r3/3.. [{0}]%'.format('#'*(100*progress//20))
-
     #Loop: (j,i) are centerpoints of data window.
     datax, datay = data.shape
     for j in xrange(datay):        
-        
+
         update_progress(j/datay) #For monitoring progress TODO
         if j >= ucntr and j < (datay - ucntr):
-            
             for i in xrange(datax):
                 
                 if i >= ucntr and i < (datax - ucntr):
@@ -255,44 +263,109 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 
 #*********************************************************
 
-def main(filepath=None):
-	print '*'*30
+def main(filepath=None, silent=False):
+    print '*'*TEXTWIDTH
     print 'Fast Rolling Hough Transform by Susan Clark'
-    print '*'*30
-	if filepath==None:
+    print '*'*TEXTWIDTH
+    if filepath==None:
 		filepath = raw_input('Please enter the full relative path of a file to analyze:')
 	
-	print '1/3.. Loading Data'
-	xy_array, datay, datax = getData(filepath)
-	print '1/3.. Successfully Loaded Data!'
+    print '1/3.. Loading Data'
+    xy_array, datay, datax = getData(filepath)
+    print '1/3.. Successfully Loaded Data!'
 
-	filename = filepath.split(".")[0] #Works if there are no other '.' besides at file extension
-	print '1/3:', filename, datax, datay
+    filename = filepath.split(".")[0] #Works if there are no other '.' besides at file extension
+    print '1/3:: Analyzing', filename, str(datax), 'x', str(datay)
 
-	print '2/3.. Setting Params'
-	#TODO wrap parameter input
-	wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, 125, 5, 0.70)
-	print '2/3.. Successfully Set Params!'
-	print #TODO Summary of Params
+    print '2/3.. Setting Params'
+    #TODO wrap parameter input
+    wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, 125, 5, 0.70)
+    print '2/3.. Successfully Set Params!'
+    print '2/3:: ' #TODO Summary of Params
 
-	print '3/3.. Runnigh Hough Transform'
-	hi_filename = filename + '_hi.npy'
-	hj_filename = filename + '_hj.npy'
-	hthets_filename = filename + '_hthets.npy'
-	print '3/3.. Your Data Will Be Saved As:', hi_filename, hj_filename, hthets_filename 
+    print '3/3.. Runnigh Hough Transform'
+    hi_filename = filename + '_hi.npy'
+    hj_filename = filename + '_hj.npy'
+    hthets_filename = filename + '_hthets.npy'
+    print '3/3.. Your Data Will Be Saved As:', hi_filename, hj_filename, hthets_filename 
 	
-	Hthets, Hi, Hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) #TODO progress meter
-	hi = np.array(Hi)
-	hj = np.array(Hj)
-	hthets = np.array(Hthets)
-	np.save(hi_filename, hi)
-	np.save(hj_filename, hj)
-	np.save(hthets_filename, hthets)
-	print '3/3: Successfully Saved Data!'
+    Hthets, Hi, Hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) #TODO progress meter
+    hi = np.array(Hi)
+    hj = np.array(Hj)
+    hthets = np.array(Hthets)
+    np.save(hi_filename, hi)
+    np.save(hj_filename, hj)
+    np.save(hthets_filename, hthets)
+    print '3/3:: Successfully Saved Data!'
 
 def interpret(filepath=None):
-    print '*'*20, 'Rolling Hough Transform Results', '*'*20
+    print '*'*TEXTWIDTH
+    print 'Rolling Hough Transform Interpreter by Lowell Schudel'
+    print '*'*TEXTWIDTH
+    
+    #Input Handling
+    '''
+    Failures:
+    0- Bad filepath
+        0.1-
+    1- Output files not found
+        1.1- Did not choose to reananlyze
+        1.2- Generated output files, reinterpreted
+        1.3- Failed to find image file
+    2- Data reading failure
+        2.1
+
+    Exits:
+    0- No image filepath entered
+    1- Outputs not found, no new analysis
+    '''
+
+    #Filename Assignment
     if filepath==None:
-        filepath = raw_input('Please enter the full relative path of a file to analyze:')
+        try:
+            filepath = raw_input('Please enter the relative path of a file to analyze:')         
+        except EOFError:
+            exit('Exiting interpret: 0') #Exit 0
+        
+    try:
+        filename = filepath.split(".")[0]
+    except IndexError:
+        print 'Filename does not appear to have an extension'
+    hi_filename = filename + '_hi.npy'
+    hj_filename = filename + '_hj.npy'
+    hthets_filename = filename + '_hthets.npy'
+    
+    
+    from os.path import isfile
+    if !(isfile(hi_filename) and isfile(hj_filename) and isfile(hthets_filename)): 
+        print 'Output files for this image were not found.'
+        from distutils.util import strtobool
+        try:
+            reanalyze = strtobool(raw_input('Would you like to reanalyze the image? y/[n]'))
+        except ValueError:
+            #No choice
+            reanalyze = False #Failure 1.1 
+        except EOFError:
+            #Default choice
+            realanyze = False 
+
+        if realanyze 
+            if isfile(filepath):
+                main(filepath, silent=True)
+                print 'File analyzed successfully. Reinterpreting...' #Failure 1.2
+                interpret(filepath)
+            else:
+                print 'Nonexistant image file, please try another.' #Failure 1.3
+        else:
+            exit('Exiting interpret: 1') #Exit 1
+
+    else: 
+        from numpy import load
+        try:
+            hi = np.load(hi_filename)
+            hj = np.load(hj_filename)
+            hthets = np.load(hthets_filename)
+        except IOError: 
+            print 'One or more output files are invalid' #Failure 2.1
 
 
