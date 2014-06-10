@@ -320,15 +320,28 @@ def rht_interpret(filepath, report_errors=False):
             #backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
         for c in coords:
             backproj[c[0]][c[1]] = np.sum(hthets[coords.index(c)]) 
-        divide(backproj, np.sum(backproj), backproj)
+        np.divide(backproj, np.sum(backproj), backproj)
         backproj_filename = filename + '_backproj.npy'
         np.save(backproj_filename, np.array(backproj))
 
         #Overlay of backproj onto image
         bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
         overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
-        overlay_filename = filename + '_overlay.npy'
-        np.save(overlay_filename, np.array(overlay))
+        if filepath.endswith('.fits'):
+        	#Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
+        	overlay_filename = filename + '_overlay.fits'
+        	hdu = fits.PrimaryHDU(overlay)
+        	hdu.writeto(overlay_filename)
+        else:
+        	#Image: http://effbot.org/imagingbook/image.htm#tag-Image.Image.save
+        	from PIL import Image
+        	overlay_filename =  filename + '_overlay.' + filepath.split('.')[1]
+        	im = (Image.fromarray(overlay))[::-1] #Must reverse y-coords
+        	im.save(overlay_filename)
+
+        	#Numpy Array
+        	#overlay_filename = filename + '_overlay.npy'
+        	#np.save(overlay_filename, np.array(overlay))
 
         #Spectrum *Length ntheta array of theta power for whole image*
         spectrum = [np.sum(theta) for theta in hthets]
@@ -338,7 +351,8 @@ def rht_interpret(filepath, report_errors=False):
     except Exception as e:
         if report_errors:
             #Reported Failure
-            print e.args
+            raise e
+            #print e.args
         else:
             #Silern Failure
             pass

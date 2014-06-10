@@ -1,4 +1,154 @@
 #!/usr/bin/python
+import numpy as np
 
-def xyt(xy, wlen, thetas):
+#ALL THETA VALUES ARE IN RADIANS
+
+def r_square(theta_square):
+    #theta_square must be in radians between [0, 2*pi)
+    #Defines the sides of any square with bottome left corner (x, y)
+    #Using polar coordinates centered on (x+1/2, y+1/2)
+    #With theta_square increasing counterclockwise from the right horizontal
     
+    try:
+        twoPi = 2.0*np.pi
+        while theta_square >= twoPi:
+            theta_square -= twoPi
+        while theta_square < 0.0:
+            theta_square += twoPi
+        
+        eighth = twoPi/8.0
+        if 7*eighth <= theta_square or theta_square < eighth:
+            #Right side of square
+            return 1.0/(2.0*np.cos(theta_square))
+        elif eighth <= theta_square and theta_square < 3*eighth:
+            #Top side of square
+            return 1.0/(2.0*np.sin(theta_square))
+        elif 3*eighth <= theta_square and theta_square < 5*eighth:
+            #Left side of square
+            return -1.0/(2.0*np.cos(theta_square))
+        else: #elif 5*eighth <= theta_square and theta_square < 7*eighth:
+            #Bottom side of square
+            return -1.0/(2.0*np.sin(theta_square))
+    
+    except Exception:
+        return None
+
+def square_to_image_coords(x, y, theta_square):
+    #theta_square must be in radians between [0, 2*pi) with theta_square increasing counterclockwise from the right horizontal 
+    #Square coordinates are polar coordinates centered on (x+1/2, y+1/2)
+    #Image coords will be the cartesian location (x_square, y_square) with origin (0.0, 0.0)
+    #One or both of (x_square, y_square) will be integer-valued
+    x_square = x + 0.5 + r_square(theta_square)*np.cos(theta_square)
+    y_square = y + 0.5 + r_square(theta_square)*np.sin(theta_square)
+    if x_square.is_integer():
+        x_square = int(x_square)
+    if y_square.is_integer():
+        y_square = int(y_square)
+    return (x_square, y_square)
+
+
+            
+def image_to_square_coords(x_square, y_square, x, y):
+    #(x_square, y_square) must be on the boundary(s) of some pixel
+    #Will return a square's image coordinate (x, y) and the theta_square allowing it to project there
+    #Input points could correspond to 1, 2, or 4 output points, which will be returned as a list. 
+
+
+
+    #TODO NOT ENOUGH INFORMATION
+    return (x, y, theta_square)
+
+
+def theta_passes_through(i, j, x, y, theta, rmax):
+    #False if a line from (i+1/2, j+1/2) at angle theta won't pass through square(x, y) before rmax,
+    #Checked first by allowed angle, and second by allowd distance
+    x_prime = x-i
+    y_prime = y-j
+
+    #Would theta ever pass within the bounds of square(x,y)??
+    corners = np.arctan2([x_prime-0.5, x_prime-0.5, x_prime+0.5, x_prime+0.5], [y_prime+0.5, y_prime-0.5, y_prime+0.5, y_prime-0.5])
+    if not( min(corners) <= theta and theta <= max(corners) ):
+        return false #TODO check that this is bounded properly [-pi, pi]
+
+    #Is the nearest side of square(x, y) along theta within rmax of (i+1/2, j+1/2)??
+    rho = np.arctan2(y_prime, x_prime) 
+    theta_a = rho + np.pi #Square polar coord of nearest point on square
+    (x_square, y_square) = square_to_image_coords(x, y, theta_a) #Image coords of nearest point 
+    (a_x, a_y) = (x_square-(i+0.5), y_square-(j+0.5)) #Vector from center of square(i, j) to nearest point
+    
+    return (np.hypot(a_x, a_y) <= rmax) #If the distance to the nearest point is allowed
+
+
+def xyt(image, wlen, thetas=None):
+    #Produces the output 3D array of theta weightings for a point
+
+    xlen, ylen = image.shape #Parse x/y dimensions
+    if (thetas != None):
+        ntheta = len(thetas) #Parse height in theta
+        dtheta = np.pi/ntheta #Divide theta
+    else:
+        ntheta = 180 #Arbitrary precision
+        thetas, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)
+    
+    #Makes prism; output has dimensions (x, y, theta)
+    output = np.zeros((xlen, ylen, ntheta))
+
+
+    def weight_theta(i, j, theta):
+        #Returns [((x, y), L), ...], an array of coordinates of intersected squares and the length through each  
+        
+        #Loops over a circular window around image coordinate, only within image
+        raduius = wlen/2.0
+        '''
+        left = max(0, i+0.5-radius)
+        right = min(xlen-1, i+0.5+radius)
+        for x in range(left, right):
+            x_prime = x-i
+
+            up = int( max(0, j-np.sqrt(radius**2 - x_prime**2)) )
+            down = int( min(ylen-1, j+np.sqrt(radius**2 - x_prime**2)) )
+            for y in range(up, down):
+                y_prime = y-j
+        '''
+        for x in range(xlen):
+            x_prime = x-i
+            for y in range(ylen)
+                y_prime = y-j
+                if theta_passes_through(i, j, x, y, theta, rmax):
+                    pixels.append( (x, y) )
+
+                    rho = np.arctan2(y_prime, x_prime) 
+                    theta_a = rho + np.pi #Square polar coord of nearest point on square
+                    (x_square, y_square) = square_to_image_coords(x, y, theta_a) #Image coords of nearest point 
+                    (a_x, a_y) = (x_square-(i+0.5), y_square-(j+0.5)) #Vector from center of square(i, j) to nearest point
+                    a = np.hypot(a_x, a_y)
+
+                            
+
+        #Keep accumulators for each point
+        pixels = []
+        weights = []
+
+        temp = True
+        while (temp):
+            try:
+                pixels.remove(None)
+            except Exception:
+                temp = False
+        temp = True
+        while (temp):
+            try:
+                weights.remove(None)
+            except Exception:
+                temp = False
+        return zip(pixels, weights)
+
+
+    #Loops over image coordinates
+    for i in range(xlen):
+        for j in range(ylen):
+
+            #Loop over thetas to weight the empty accumulator array properly
+            for theta in thetas:
+                length = 0
+                weight_theta(i, j, theta)

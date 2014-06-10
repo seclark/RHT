@@ -30,6 +30,38 @@ def ring(w, r1, r2):
 	kernel1 = circ_kern(square, r1)
 	kernel2 = circ_kern(square, r2)
 	return kernel1^kernel2 #XORs two circ_kerns together
+
+
+def r_square(theta_square):
+    #theta_square must be in radians between [0, 2*pi)
+    #Defines the sides of any square with bottome left corner (x, y)
+    #Using polar coordinates centered on (x+1/2, y+1/2)
+    #With theta_square increasing counterclockwise from the right horizontal
+    
+    try:
+        twoPi = 2.0*np.pi
+        while theta_square >= twoPi:
+            theta_square -= twoPi
+        while theta_square < 0.0:
+            theta_square += twoPi
+        
+        eighth = twoPi/8.0
+        if 7*eighth <= theta_square or theta_square < eighth:
+            #Right side of square
+            return 1.0/(2.0*np.cos(theta_square))
+        elif eighth <= theta_square and theta_square < 3*eighth:
+            #Top side of square
+            return 1.0/(2.0*np.sin(theta_square))
+        elif 3*eighth <= theta_square and theta_square < 5*eighth:
+            #Left side of square
+            return -1.0/(2.0*np.cos(theta_square))
+        else: #elif 5*eighth <= theta_square and theta_square < 7*eighth:
+            #Bottom side of square
+            return -1.0/(2.0*np.sin(theta_square))
+    
+    except Exception:
+        return None
+
 	
 def ntheta_fast(wlen):
 	import math
