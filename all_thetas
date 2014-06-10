@@ -96,25 +96,17 @@ def xyt(image, wlen, thetas=None):
 
     def weight_theta(i, j, theta):
         #Returns [((x, y), L), ...], an array of coordinates of intersected squares and the length through each  
+        pixels = []
+        weights = []        
         
         #Loops over a circular window around image coordinate, only within image
-        raduius = wlen/2.0
-        '''
-        left = max(0, i+0.5-radius)
-        right = min(xlen-1, i+0.5+radius)
-        for x in range(left, right):
-            x_prime = x-i
+        raduius = np.amin([ wlen/2.0, np.hypot((xlen+1.0)-(i+0.5), (ylen+1)-(j+0.5)), np.hypot((i+0.5), (j+0.5)), np.hypot((xlen+1.0)-(i+0.5), (j+0.5)), np.hypot((i+0.5), (ylen+1)-(j+0.5)) ])
 
-            up = int( max(0, j-np.sqrt(radius**2 - x_prime**2)) )
-            down = int( min(ylen-1, j+np.sqrt(radius**2 - x_prime**2)) )
-            for y in range(up, down):
-                y_prime = y-j
-        '''
         for x in range(xlen):
             x_prime = x-i
             for y in range(ylen)
                 y_prime = y-j
-                if theta_passes_through(i, j, x, y, theta, rmax):
+                if theta_passes_through(i, j, x, y, theta, radius):
                     pixels.append( (x, y) )
 
                     rho = np.arctan2(y_prime, x_prime) 
@@ -125,9 +117,6 @@ def xyt(image, wlen, thetas=None):
 
                             
 
-        #Keep accumulators for each point
-        pixels = []
-        weights = []
 
         temp = True
         while (temp):
