@@ -327,8 +327,18 @@ def interpret(filepath):
 	    np.save(backproj_filename, np.array(backproj))
 
 	    #Overlay of backproj onto image
-	    bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
-	    overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
+	    #bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
+	    #overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
+	    outline = []
+	    edge_val = 0.0
+	    overlay = copy.deepcopy(backproj)
+	    def outline(i, j):
+	    	if 1 <= i and i <= imx-1 and 1 <= j and j <= imy-1 and backproj[i][j] == 0.0 and np.any(backproj[i-1:i+1, j-1:j+1]):
+	    		overlay[i][j] = edge_val
+	    u_outline = np.frompyfunc(outline, 2, 0)
+	    u_outline.outer(range(imx), range(imy))
+
+	    #Overlay output
 		#Numpy Array
 		#overlay_filename = filename + '_overlay.npy'
 		#np.save(overlay_filename, np.array(overlay))
