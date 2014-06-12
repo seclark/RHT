@@ -248,7 +248,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
                     hout = h/h1 - frac
                     hout[hout<0.0] = 0.0
                 
-                    if np.sum(hout) > 0:
+                    if npsum(hout) > 0:
                         htapp(hout)
                         hiapp(i)
                         hjapp(j)
@@ -297,82 +297,108 @@ def main(filepath=None, silent=False):
 
 def interpret(filepath):
     '''
-    Fail-fast! Optionally can report_errors!
+    Fail-fast! #Optionally can report_errors!
     Using name_hi.npy, name_hj.npy, name_hthets.npy,
     Prodces:
         Backprojection --> name_backproj.npy
-        Backprojection Overlayed on Image --> name_overlay.npy 
+        Backprojection Overlayed on Image --> name_overlay(.fits, .jpg, etc) 
         ThetaSpectrum --> name_spectrum.npy
     '''
     try:
-	    #Read in rht output files
-	    filename = filepath.split(".")[0]
-	    hi_filename = filename + '_hi.npy'
-	    hj_filename = filename + '_hj.npy'
-	    hthets_filename = filename + '_hthets.npy'
-	    hi = np.load(hi_filename)
-	    hj = np.load(hj_filename)
-	    hthets = np.load(hthets_filename)
-	            
-	    #Backprojection only *Full Size* #Requires image
-	    image, imx, imy = getData(filepath)
-	    backproj = np.zeros_like(image)
-	    coords = zip(hi, hj)
-	    #for c in range(len(coords)):
-	        #backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
-	    for c in coords:
-	        backproj[c[0]][c[1]] = np.sum(hthets[coords.index(c)]) 
-	    np.divide(backproj, np.sum(backproj), backproj)
-	    backproj_filename = filename + '_backproj.npy'
-	    np.save(backproj_filename, np.array(backproj))
+        #Read in rht output files
+        filename = filepath.split(".")[0]
+        hi_filename = filename + '_hi.npy'
+        hj_filename = filename + '_hj.npy'
+        hthets_filename = filename + '_hthets.npy'
+        hi = np.load(hi_filename)
+        hj = np.load(hj_filename)
+        hthets = np.load(hthets_filename)
+                
+        #Backprojection only *Full Size* #Requires image
+        image, imx, imy = getData(filepath)
+        backproj = np.zeros_like(image)
+        coords = zip(hi, hj)
+        #for c in range(len(coords)):
+            #backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
+        for c in coords:
+            backproj[c[0]][c[1]] = np.sum(hthets[coords.index(c)]) 
+        np.divide(backproj, np.sum(backproj), backproj)
+        backproj_filename = filename + '_backproj.npy'
+        np.save(backproj_filename, np.array(backproj))
 
-	    #Overlay of backproj onto image
-	    #bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
-	    #overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
-	    outline = []
-	    edge_val = 0.0
-	    overlay = copy.deepcopy(backproj)
-	    def outline(i, j):
-	    	if 1 <= i and i <= imx-1 and 1 <= j and j <= imy-1 and backproj[i][j] == 0.0 and np.any(backproj[i-1:i+1, j-1:j+1]):
-	    		overlay[i][j] = edge_val
-	    u_outline = np.frompyfunc(outline, 2, 0)
-	    u_outline.outer(range(imx), range(imy))
+        #Overlay of backproj onto image
+        #bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
+        #overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
+        outline = []
+        edge_val = 0.0
+        overlay = copy.deepcopy(image)
+        def outline(i, j):
+            if 1 <= i and i <= imx-1 and 1 <= j and j <= imy-1 and backproj[i][j] == 0.0 and np.any(backproj[i-1:i+1, j-1:j+1]):
+                overlay[i][j] = edge_val
+        #u_outline = np.vectorize(outline, cache=True)
+        #u_outline.outer(range(imx), range(imy))
+        for i in range(imx):
+            for j in range(imy):
+                outline(i, j)
+        #Overlay output
+        #Numpy Array
+        #overlay_filename = filename + '_overlay.npy'
+        #np.save(overlay_filename, np.array(overlay))
+        if filepath.endswith('.fits'):
+            #Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
+            overlay_filename = filename + '_overlay.fits'
+            hdu = fits.PrimaryHDU(overlay)
+            hdu.writeto(overlay_filename)
+        else:
+            import scipy.misc
+            overlay_filename =  filename + '_overlay.' + filepath.split('.')[1]
+            #_______________________ #Must reverse overlay y-coords
+            scipy.misc.imsave(overlay_filename, overlay[::-1])
 
-	    #Overlay output
-		#Numpy Array
-		#overlay_filename = filename + '_overlay.npy'
-		#np.save(overlay_filename, np.array(overlay))
-	    if filepath.endswith('.fits'):
-	    	#Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
-	    	overlay_filename = filename + '_overlay.fits'
-	    	hdu = fits.PrimaryHDU(overlay)
-	    	hdu.writeto(overlay_filename)
-	    else:
-	    	import scipy.misc
-	    	overlay_filename =  filename + '_overlay.' + filepath.split('.')[1]
-	    	#_______________________ #Must reverse overlay y-coords
-	    	scipy.misc.imsave(overlay_filename, overlay[::-1])
+        #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
+        spectrum = [np.sum(theta) for theta in hthets]
+        spectrum_filename = filename + '_spectrum.npy'
+        np.save(spectrum_filename, np.array(spectrum))
 
-	    #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
-	    spectrum = [np.sum(theta) for theta in hthets]
-	    spectrum_filename = filename + '_spectrum.npy'
-	    np.save(spectrum_filename, np.array(spectrum))
+        print 'Success'
 
-	    
+    
     except Exception as e:
-    	#Reported Failure
-        #raise e
+        #Reported Failure
+        raise e
+        print 'Failure'
 
         #Silent Failure
         pass
+    finally:
+        #Single File Mode
+        exit()
     
 
-def rht_viewer(filepath):
-
+def viewer(filepath):
+    #Load Libraries
+    from matplotlib.pyplot import plot, show, contour
+    import numpy as np
+    import os
+    
     #Loads in relevant files
     image, imx, imy = getData(filepath)
-    from matplotlib.pyplot import plot, show, contour
-    print 'Boolean Backprojection'
-    contour(backproj)
+    filename = filepath.split(".")[0]
+    backproj_filename = filename + '_backproj.npy'
+    spectrum_filename = filename + '_spectrum.npy'
+
+    print 'Backprojection'
+    contour(np.load(backproj_filename))
     show()
+
+    print 'Theta Spectrum'
+    spectrum = np.load(spectrum_filename)
+    plot(np.linspace(0.0, 180.0, num=len(spectrum), endpoint=False), spectrum)
+    show()
+
+    '''
+    if os
+        os.startfile(filepath)
+    '''
     exit()
+    
