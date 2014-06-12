@@ -180,19 +180,24 @@ def houghnew(img, theta=None, idl=False):
     return out, theta, bins
 
 def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask): 
+
     #Create progress meter
+    import sys
     OLDP = 0
     def update_progress(progress):
         if progress > 0.0 and progress <= 1.0:
             p = int(TEXTWIDTH*progress/1.0) 
             if p > OLDP:
-                print '\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p))
+                sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p)))
+                sys.stdout.flush()
         elif progress > 0.0 and progress <= 100.0:
             p = int(TEXTWIDTH*progress/100.0) 
             if p > OLDP:
-                print '\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p)) 
+                sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p))) 
+                sys.stdout.flush()
         elif progress == 0.0:
-            print '\r3/3.. [{0}]%'.format(' '*TEXTWIDTH)
+            sys.stdout.write('\r3/3.. [{0}]%'.format(' '*TEXTWIDTH))
+            sys.stdout.flush()
                     
 
     update_progress(0.0)
@@ -255,7 +260,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 
 #*********************************************************
 
-def rht_main(filepath=None, silent=False):
+def main(filepath=None, silent=False):
     print '*'*TEXTWIDTH
     print 'Fast Rolling Hough Transform by Susan Clark'
     print '*'*TEXTWIDTH
@@ -290,7 +295,7 @@ def rht_main(filepath=None, silent=False):
     np.save(hthets_filename, hthets)
     print '3/3:: Successfully Saved Data!'
 
-def rht_interpret(filepath, report_errors=False):
+def interpret(filepath):
     '''
     Fail-fast! Optionally can report_errors!
     Using name_hi.npy, name_hj.npy, name_hthets.npy,
@@ -300,62 +305,57 @@ def rht_interpret(filepath, report_errors=False):
         ThetaSpectrum --> name_spectrum.npy
     '''
     try:
-    	#Read imports
-    	import numpy as np
+	    #Read in rht output files
+	    filename = filepath.split(".")[0]
+	    hi_filename = filename + '_hi.npy'
+	    hj_filename = filename + '_hj.npy'
+	    hthets_filename = filename + '_hthets.npy'
+	    hi = np.load(hi_filename)
+	    hj = np.load(hj_filename)
+	    hthets = np.load(hthets_filename)
+	            
+	    #Backprojection only *Full Size* #Requires image
+	    image, imx, imy = getData(filepath)
+	    backproj = np.zeros_like(image)
+	    coords = zip(hi, hj)
+	    #for c in range(len(coords)):
+	        #backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
+	    for c in coords:
+	        backproj[c[0]][c[1]] = np.sum(hthets[coords.index(c)]) 
+	    np.divide(backproj, np.sum(backproj), backproj)
+	    backproj_filename = filename + '_backproj.npy'
+	    np.save(backproj_filename, np.array(backproj))
 
-        #Read in rht output files
-        filename = filepath.split(".")[0]
-        hi_filename = filename + '_hi.npy'
-        hj_filename = filename + '_hj.npy'
-        hthets_filename = filename + '_hthets.npy'
-        hi = np.load(hi_filename)
-        hj = np.load(hj_filename)
-        hthets = np.load(hthets_filename)
-                
-        #Backprojection only *Full Size* #Requires image
-        image, imx, imy = getData(filepath)
-        backproj = np.zeros_like(image)
-        coords = zip(hi, hj)
-        #for c in range(len(coords)):
-            #backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
-        for c in coords:
-            backproj[c[0]][c[1]] = np.sum(hthets[coords.index(c)]) 
-        np.divide(backproj, np.sum(backproj), backproj)
-        backproj_filename = filename + '_backproj.npy'
-        np.save(backproj_filename, np.array(backproj))
+	    #Overlay of backproj onto image
+	    bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
+	    overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
+		#Numpy Array
+		#overlay_filename = filename + '_overlay.npy'
+		#np.save(overlay_filename, np.array(overlay))
+	    if filepath.endswith('.fits'):
+	    	#Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
+	    	overlay_filename = filename + '_overlay.fits'
+	    	hdu = fits.PrimaryHDU(overlay)
+	    	hdu.writeto(overlay_filename)
+	    else:
+	    	import scipy.misc
+	    	overlay_filename =  filename + '_overlay.' + filepath.split('.')[1]
+	    	#_______________________ #Must reverse overlay y-coords
+	    	scipy.misc.imsave(overlay_filename, overlay[::-1])
 
-        #Overlay of backproj onto image
-        bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
-        overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
-        if filepath.endswith('.fits'):
-        	#Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
-        	overlay_filename = filename + '_overlay.fits'
-        	hdu = fits.PrimaryHDU(overlay)
-        	hdu.writeto(overlay_filename)
-        else:
-        	#Image: http://effbot.org/imagingbook/image.htm#tag-Image.Image.save
-        	from PIL import Image
-        	overlay_filename =  filename + '_overlay.' + filepath.split('.')[1]
-        	im = (Image.fromarray(overlay))[::-1] #Must reverse y-coords
-        	im.save(overlay_filename)
+	    #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
+	    spectrum = [np.sum(theta) for theta in hthets]
+	    spectrum_filename = filename + '_spectrum.npy'
+	    np.save(spectrum_filename, np.array(spectrum))
 
-        	#Numpy Array
-        	#overlay_filename = filename + '_overlay.npy'
-        	#np.save(overlay_filename, np.array(overlay))
-
-        #Spectrum *Length ntheta array of theta power for whole image*
-        spectrum = [np.sum(theta) for theta in hthets]
-        spectrum_filename = filename + '_spectrum.npy'
-        np.save(spectrum_filename, np.array(spectrum))
-
+	    
     except Exception as e:
-        if report_errors:
-            #Reported Failure
-            raise e
-            #print e.args
-        else:
-            #Silern Failure
-            pass
+    	#Reported Failure
+        #raise e
+
+        #Silent Failure
+        pass
+    
 
 def rht_viewer(filepath):
 

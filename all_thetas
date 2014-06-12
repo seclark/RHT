@@ -139,5 +139,6 @@ def xyt(image, wlen, thetas=None):
 
             #Loop over thetas to weight the empty accumulator array properly
             for theta in thetas:
-                length = 0
-                weight_theta(i, j, theta)
+                
+                pixels, weights = zip(*weight_theta(i, j, theta))
+                length = sum(weights)

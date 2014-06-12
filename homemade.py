@@ -14,17 +14,23 @@ def rht(xy, wlen, smr, frac=0.70):
     #Parse variables
     xlen, ylen = xy.shape
 
+    '''
     #Perform checks
     wlen = int(wlen)
     if (smr > xlen) or (smr > ylen) or (wlen > xlen) or (wlen > ylen):
         print 'Invalid Parameters'
         exit()
-
+    '''
+    
     #Import functions
     from numpy import zeros, pi, arange, inf, isinf, subtract, linspace
     from math import hypot, sqrt
+    from scipy.ndimage.filters import gaussian_filter
     
     #Begin unmask
+    '''
+    xy_blur = gaussian_filter(xy, sigma=smr, order=0, mode='constant', cval=0, truncate=4.0)
+    '''
     xy_blur = [[ [0,0] ]*ylen]*xlen
     for i in range(xlen):
         for j in range(ylen):
@@ -48,6 +54,7 @@ def rht(xy, wlen, smr, frac=0.70):
         #for j in range(ylen):
             #xy_blur[i][j] = blur(xy_blur[i][j])
     xy_blur = map(lambda row: map(blur, row), xy_blur) #TODO
+    #'''
 
     #Subtract blur
     xy_sharp = subtract(xy, xy_blur)
