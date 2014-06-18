@@ -186,24 +186,18 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 
     #Create progress meter
     import sys
-    OLDP = 0
     def update_progress(progress):
         if progress > 0.0 and progress <= 1.0:
             p = int(TEXTWIDTH*progress/1.0) 
-            if p > OLDP:
-                sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p)))
-                sys.stdout.flush()
-                OLDP = p
+            sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p)))
+            sys.stdout.flush()
         elif progress > 0.0 and progress <= 100.0:
             p = int(TEXTWIDTH*progress/100.0) 
-            if p > OLDP:
-                sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p))) 
-                sys.stdout.flush()
-                OLDP = p
+            sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p))) 
+            sys.stdout.flush()
         elif progress == 0.0:
             sys.stdout.write('\r3/3.. [{0}]%'.format(' '*TEXTWIDTH))
             sys.stdout.flush()
-            OLDP = p
         else:
             pass ##TODO Progress Bar Failure
                     
@@ -288,7 +282,6 @@ def center(filepath, shape=(500, 500)):
         return center_filename
     else:
         return None 
-
 
 def main(filepath=None, silent=False):
     print '*'*TEXTWIDTH
@@ -432,5 +425,3 @@ def viewer(filepath):
     if os
         os.startfile(filepath)
     '''
-    exit()
-    
