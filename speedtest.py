@@ -66,20 +66,21 @@ def setParams(gassslice, w, s, f):
 if __name__ == '__main__':
 
     #Setup Statements
+    N=3
     SETUP = 'from speedtest import getData, setParams; gassslice, datay, datax = getData(\'smalltest.fits\'); wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 55, 5, 0.70)'
 
     #Timing Loop
     newstmt = 'fastrht_prof.window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)'
     newsetup = 'import fastrht_prof; '+SETUP
-    newtime = timeit.timeit(stmt=newstmt, setup=newsetup, number=1)
+    newtime = timeit.timeit(stmt=newstmt, setup=newsetup, number=N)/N
     print 'NEW:', newtime
 
     oldstmt = 'fastrhtOLD_prof.window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)' 
     oldsetup = 'import fastrhtOLD_prof; '+SETUP
-    oldtime = timeit.timeit(stmt=oldstmt, setup=oldsetup, number=1)
-    print 'OLD:', oldtime 
+    oldtime = timeit.timeit(stmt=oldstmt, setup=oldsetup, number=N)/N
+    print 'OLD:', oldtime
     
-    print 'SPEEDUP:' + str(100*(1.0-newtime/oldtime)) + '\%'
+    print 'SPEEDUP:' + str(100*(1.0-newtime/oldtime)) + '%'
     print 'Done.'
 
 

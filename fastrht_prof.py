@@ -64,14 +64,15 @@ def all_thetas(window, thetbins):
     
     #Makes prism; output has dimensions (x, y, theta)
     out = np.zeros((wx, wy, ntheta), np.int_)
-    
+    w_1_orig = np.zeros((wx, wy), np.float_)
+
     for i in xrange(wx):
         for j in xrange(wy):
-            #At each x/y value, create new single-pixel image
-            w_1 = np.zeros((wx, wy), np.float_)
-            
-            # run the Hough for each point one at a time
             if window[i,j] == 1:
+            	#At each x/y value, create new single-pixel image
+            	w_1 = copy.copy(w_1_orig)
+            	# run the Hough for each point one at a time
+            
                 w_1[i,j] = 1
        
                 H, thets, dist = houghnew(w_1, thetbins) 
