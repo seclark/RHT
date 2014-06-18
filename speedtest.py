@@ -72,15 +72,14 @@ if __name__ == '__main__':
     newstmt = 'fastrht_prof.window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)'
     newsetup = 'import fastrht_prof; '+SETUP
     newtime = timeit.timeit(stmt=newstmt, setup=newsetup, number=1)
+    print 'NEW:', newtime
 
     oldstmt = 'fastrhtOLD_prof.window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)' 
     oldsetup = 'import fastrhtOLD_prof; '+SETUP
     oldtime = timeit.timeit(stmt=oldstmt, setup=oldsetup, number=1)
-
-
-    #Results
     print 'OLD:', oldtime 
-    print 'NEW:', newtime
+    
+    print 'SPEEDUP:' + str(100*(1.0-newtime/oldtime)) + '\%'
     print 'Done.'
 
 
