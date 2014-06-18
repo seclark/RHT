@@ -67,7 +67,7 @@ if __name__ == '__main__':
 
     #Setup Statements
     N=3
-    SETUP = 'from speedtest import getData, setParams; gassslice, datay, datax = getData(\'smalltest.fits\'); wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 55, 5, 0.70)'
+    SETUP = 'from speedtest import getData, setParams; gassslice, datax, datay = getData(\'smalltest.fits\'); wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 55, 5, 0.70)'
 
     #Timing Loop
     newstmt = 'fastrht_prof.window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)'

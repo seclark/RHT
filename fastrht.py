@@ -27,8 +27,11 @@ def getData(filepath):
     if filepath.endswith('.fits'):
         hdulist = fits.open(filepath) #Opens HDU list
         gassslice = hdulist[0].data #Reads all data as an array
+    elif filepath.endswith('.npy'):
+        gassslice = np.load(filepath)
     else:
         gassslice = imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
+
     x, y = gassslice.shape #Gets dimensions
     return gassslice, x, y
 
@@ -190,14 +193,19 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
             if p > OLDP:
                 sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p)))
                 sys.stdout.flush()
+                OLDP = p
         elif progress > 0.0 and progress <= 100.0:
             p = int(TEXTWIDTH*progress/100.0) 
             if p > OLDP:
                 sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p))) 
                 sys.stdout.flush()
+                OLDP = p
         elif progress == 0.0:
             sys.stdout.write('\r3/3.. [{0}]%'.format(' '*TEXTWIDTH))
             sys.stdout.flush()
+            OLDP = p
+        else:
+            pass ##TODO Progress Bar Failure
                     
 
     update_progress(0.0)
@@ -207,7 +215,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     kernel = circ_kern(wsquare1, smr) #Stores an smr-sized circle
     wkernel = circ_kern(wsquare1, wlen) #And an wlen-sized circle
     xyt = all_thetas(wkernel, theta) #Cylinder of all theta values per point
-    print xyt.shape, 'xyt shape' #TODO
+    ##print xyt.shape, 'xyt shape'
 
     #unsharp mask the whole data set
     udata = umask(data, kernel)
@@ -215,15 +223,15 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(wkernel, xyt, ntheta)
 
-    start = time.clock()
+    #start = time.clock()
     Hthets = []
     Hi = []
     Hj = []
     
-    start0=time.clock()
+    #start0=time.clock()
     dcube = np.repeat(udata[:,:,np.newaxis], repeats=ntheta, axis=2)
-    end0 = time.clock()
-    print 'cube data', end0-start0 #TODO
+    #end0 = time.clock()
+    #print 'cube data', end0-start0 
     
 
     htapp = Hthets.append
@@ -253,12 +261,34 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
                         hiapp(i)
                         hjapp(j)
         
-    end = time.clock()
-    print 'Code time %.6f seconds' % (end - start)         
+    #end = time.clock()
+    #print 'Code time %.6f seconds' % (end - start)         
     
     return Hthets, Hi, Hj
 
-#*********************************************************
+#******************************************************************************************
+#Lowell's Additions to the Code
+#******************************************************************************************
+
+def center(filepath, shape=(500, 500)):
+    #Returns a cutout from the center of the image
+    xy_array, datax, datay = getData(filepath)
+    x, y = shape
+    if 0 < x < datax and 0 < y < datay:
+        import numpy as np
+        left = int(datax//2-x//2)
+        right = int(datax//2+x//2)
+        up = int(datay//2+y//2)
+        down = int(datay//2-y//2)
+        cutout = np.array(xy_array[left:right, down:up])
+        split = filepath.split(".")
+        filename = '.'.join( split[0:len(split)-1] )
+        center_filename = filename+'_center.npy'
+        np.save(center_filename, cutout)
+        return center_filename
+    else:
+        return None 
+
 
 def main(filepath=None, silent=False):
     print '*'*TEXTWIDTH
@@ -268,10 +298,11 @@ def main(filepath=None, silent=False):
         filepath = raw_input('Please enter the full relative path of a file to analyze:')
     
     print '1/3.. Loading Data'
-    xy_array, datay, datax = getData(filepath)
+    xy_array, datax, datay = getData(filepath)
     print '1/3.. Successfully Loaded Data!'
 
-    filename = filepath.split(".")[0] #Works if there are no other '.' besides at file extension
+    split = filepath.split(".")
+    filename = '.'.join( split[0:len(split)-1] )
     print '1/3:: Analyzing', filename, str(datax), 'x', str(datay)
 
     print '2/3.. Setting Params'
@@ -306,14 +337,20 @@ def interpret(filepath):
     '''
     try:
         #Read in rht output files
-        filename = filepath.split(".")[0]
+        split = filepath.split(".")
+        filename = '.'.join( split[0:len(split)-1] )
         hi_filename = filename + '_hi.npy'
         hj_filename = filename + '_hj.npy'
         hthets_filename = filename + '_hthets.npy'
         hi = np.load(hi_filename)
         hj = np.load(hj_filename)
         hthets = np.load(hthets_filename)
-                
+
+        #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
+        spectrum = [np.sum(theta) for theta in hthets]
+        spectrum_filename = filename + '_spectrum.npy'
+        np.save(spectrum_filename, np.array(spectrum))
+
         #Backprojection only *Full Size* #Requires image
         image, imx, imy = getData(filepath)
         backproj = np.zeros_like(image)
@@ -340,25 +377,22 @@ def interpret(filepath):
         for i in range(imx):
             for j in range(imy):
                 outline(i, j)
+        
         #Overlay output
-        #Numpy Array
-        #overlay_filename = filename + '_overlay.npy'
-        #np.save(overlay_filename, np.array(overlay))
         if filepath.endswith('.fits'):
             #Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
             overlay_filename = filename + '_overlay.fits'
             hdu = fits.PrimaryHDU(overlay)
             hdu.writeto(overlay_filename)
+        elif filepath.endswith('.npy'):
+            overlay_filename = filename + '_overlay.npy'
+            np.save(overlay_filename, overlay)
         else:
             import scipy.misc
-            overlay_filename =  filename + '_overlay.' + filepath.split('.')[1]
+            overlay_filename =  filename + '_overlay.' + split[len(split)-1]
             #_______________________ #Must reverse overlay y-coords
             scipy.misc.imsave(overlay_filename, overlay[::-1])
 
-        #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
-        spectrum = [np.sum(theta) for theta in hthets]
-        spectrum_filename = filename + '_spectrum.npy'
-        np.save(spectrum_filename, np.array(spectrum))
 
         print 'Success'
 
@@ -370,9 +404,6 @@ def interpret(filepath):
 
         #Silent Failure
         pass
-    finally:
-        #Single File Mode
-        exit()
     
 
 def viewer(filepath):
@@ -383,7 +414,8 @@ def viewer(filepath):
     
     #Loads in relevant files
     image, imx, imy = getData(filepath)
-    filename = filepath.split(".")[0]
+    split = filepath.split(".")
+    filename = '.'.join( split[0:len(split)-1] )
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
 

@@ -21,6 +21,7 @@ print("a = %s" % a)
 print("b = %s" % b)
 print("sum = %s" % result)
 
+#_______________________________________________
 
 htapp = Hthets.append
 hiapp = Hi.append
@@ -49,3 +50,12 @@ for j in xrange(datay):
                     htapp(hout)
                     hiapp(i)
                     hjapp(j)
+
+
+#_______________________________________________
+
+for j in range(ucntr, (datay-ucntr)):
+
+    
+
+
