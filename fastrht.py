@@ -35,7 +35,7 @@ def getData(filepath):
     x, y = gassslice.shape #Gets dimensions
     return gassslice, x, y
 
-def setParams(gassslice, w, s, f, gass=False):
+def setParams(gassslice, w, s, f, ZEA=False):
     wlen = w #101.0 #Window diameter
     frac = f #0.70 #Theta-power threshold to store
     smr = s #11.0 #Smoothing radius
@@ -56,15 +56,51 @@ def setParams(gassslice, w, s, f, gass=False):
     kernel = circ_kern(wsquare1, smr) 
     wkernel = circ_kern(wsquare1, wlen) 
     
-    if gass==True:
+    if ZEA:
         mask = makemask(wkernel, gassslice)
     else:
         mask = None #Default is no mask
 
-       # xyt = np.load('xyt2_101_223.npy')
-       # mask = np.load('w101_mask.npy')
-
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
+
+
+# The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
+# which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
+# makemask just makes sure that nothing outside that circle is counted as data.
+
+def makemask(wkernel, gassslice):
+    #gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
+    #gassdata  = pyfits.getdata(gassfile, 0)
+    #gassslice = gassdata[45, :, :]
+    
+    datay, datax = np.shape(gassslice)
+    
+    mnvals = np.indices((datax,datay))
+    pixcrd = np.zeros((datax*datay,2), np.float_)
+    pixcrd[:,0] = mnvals[:,:][0].reshape(datax*datay)
+    pixcrd[:,1] = mnvals[:,:][1].reshape(datax*datay)
+    
+    w = wcs.WCS(naxis=2)
+    #TODO READ FROM FITS HEADER FILE!
+    w.wcs.crpix = [1.125000000E3, 1.125000000E3]
+    w.wcs.cdelt = np.array([-8.00000000E-2, 8.00000000E-2])
+    w.wcs.crval = [0.00000000E0, -9.00000000E1]
+    w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
+    
+    worldc = w.wcs_pix2world(pixcrd, 1)
+    
+    worldcra = worldc[:,0].reshape(datax,datay)
+    worldcdec = worldc[:,1].reshape(datax,datay)
+    
+    gm = np.zeros(gassslice.shape)
+    #gm[worldcdec < 0] = 1
+    
+    gmconv = filters.correlate(gm, weights=wkernel)
+    gg = copy.copy(gmconv)
+    gg[gmconv < np.max(gmconv)] = 0
+    gg[gmconv == np.max(gmconv)] = 1
+    
+    return gg
 
 
 #Performs a circle-cut of given radius on inkernel.
@@ -242,7 +278,10 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
             for i in xrange(datax):
                 
                 if i >= ucntr and i < (datax - ucntr):
-                    
+
+                    #TODO
+                    #if mask is None or (mask is not None and mask[i,j] == 1): #Only necessary for GASS data
+                        
                     wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
                     
                     h = npsum(npsum(wcube*xyt,axis=0), axis=0)
@@ -300,7 +339,8 @@ def main(filepath=None):
 
     print '2/3.. Setting Params'
     #TODO wrap parameter input
-    wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, 125, 5, 0.70)
+    isZEA = filepath.endswith('.fits') and (False) ##TODO READ FITS HEADER
+    wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, 50, 5, 0.70, isZEA)
     print '2/3.. Successfully Set Params!'
     print '2/3:: ' #TODO Summary of Params
 
@@ -351,7 +391,7 @@ def interpret(filepath):
         #for c in range(len(coords)):
             #backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
         for c in coords:
-            backproj[c[0]][c[1]] = np.sum(hthets[coords.index(c)]) 
+            backproj[c[1]][c[0]] = np.sum(hthets[coords.index(c)]) 
         np.divide(backproj, np.sum(backproj), backproj)
         backproj_filename = filename + '_backproj.npy'
         np.save(backproj_filename, np.array(backproj))
@@ -376,7 +416,7 @@ def interpret(filepath):
             #Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
             overlay_filename = filename + '_overlay.fits'
             hdu = fits.PrimaryHDU(overlay)
-            hdu.writeto(overlay_filename)
+            hdu.writeto(overlay_filename, clobber=True)
         elif filepath.endswith('.npy'):
             overlay_filename = filename + '_overlay.npy'
             np.save(overlay_filename, overlay)
@@ -401,7 +441,7 @@ def interpret(filepath):
 
 def viewer(filepath):
     #Load Libraries
-    from matplotlib.pyplot import plot, show, subplot, imshow, title #contour
+    from matplotlib.pyplot import plot, show, subplot, imshow, title, ylim #contour
     import numpy as np
     import os
     
@@ -416,9 +456,11 @@ def viewer(filepath):
     #contour(np.load(backproj_filename))
     subplot(121)
     imshow(image, cmap='gray')
+    ylim(0, imy)
     title(filepath)
     subplot(122)
     imshow(np.load(backproj_filename), cmap='gray')
+    ylim(0, imy)
     title(backproj_filename)
     show()
 
