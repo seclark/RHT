@@ -283,7 +283,7 @@ def center(filepath, shape=(500, 500)):
     else:
         return None 
 
-def main(filepath=None, silent=False):
+def main(filepath=None):
     print '*'*TEXTWIDTH
     print 'Fast Rolling Hough Transform by Susan Clark'
     print '*'*TEXTWIDTH
@@ -401,7 +401,7 @@ def interpret(filepath):
 
 def viewer(filepath):
     #Load Libraries
-    from matplotlib.pyplot import plot, show, contour
+    from matplotlib.pyplot import plot, show, subplot, imshow, title #contour
     import numpy as np
     import os
     
@@ -413,7 +413,13 @@ def viewer(filepath):
     spectrum_filename = filename + '_spectrum.npy'
 
     print 'Backprojection'
-    contour(np.load(backproj_filename))
+    #contour(np.load(backproj_filename))
+    subplot(121)
+    imshow(image, cmap='gray')
+    title(filepath)
+    subplot(122)
+    imshow(np.load(backproj_filename), cmap='gray')
+    title(backproj_filename)
     show()
 
     print 'Theta Spectrum'
