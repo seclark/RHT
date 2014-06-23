@@ -11,8 +11,6 @@
 from __future__ import division
 import numpy as np
 import math
-import time
-import random
 from astropy import wcs
 from astropy.io import fits
 import scipy as sp
