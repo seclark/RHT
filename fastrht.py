@@ -17,6 +17,7 @@ import scipy as sp
 from scipy.ndimage import filters, imread
 from matplotlib.pyplot import imshow, show
 import copy
+import sys
 
 TEXTWIDTH = 40
 
@@ -216,24 +217,9 @@ def houghnew(img, theta=None, idl=False):
 
     return out, theta, bins
 
+
 def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask): 
 
-    #Create progress meter
-    import sys
-    def update_progress(progress):
-        if progress > 0.0 and progress <= 1.0:
-            p = int(TEXTWIDTH*progress/1.0) 
-            sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p)))
-            sys.stdout.flush()
-        elif progress > 0.0 and progress <= 100.0:
-            p = int(TEXTWIDTH*progress/100.0) 
-            sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p))) 
-            sys.stdout.flush()
-        elif progress == 0.0:
-            sys.stdout.write('\r3/3.. [{0}]%'.format(' '*TEXTWIDTH))
-            sys.stdout.flush()
-        else:
-            pass ##TODO Progress Bar Failure
                     
 
     update_progress(0.0)
@@ -301,6 +287,23 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 #Lowell's Additions to the Code
 #******************************************************************************************
 
+#Create progress meter
+def update_progress(progress, message='Progress:'):
+    #sys.stdout.write('\r3/3.. [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p)))
+    if progress > 0.0 and progress <= 1.0:
+        p = int(TEXTWIDTH*progress/1.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p), message))
+        sys.stdout.flush()
+    elif progress > 0.0 and progress <= 100.0:
+        p = int(TEXTWIDTH*progress/100.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p), message)) 
+        sys.stdout.flush()
+    elif progress == 0.0:
+        sys.stdout.write('\r{1} [{0}]%'.format(' '*TEXTWIDTH, message))
+        sys.stdout.flush()
+    else:
+        pass ##TODO Progress Bar Failure}}}
+
 def center(filepath, shape=(500, 500)):
     #Returns a cutout from the center of the image
     xy_array, datax, datay = getData(filepath)
@@ -320,12 +323,8 @@ def center(filepath, shape=(500, 500)):
     else:
         return None 
 
-def main(filepath=None):
-    print '*'*TEXTWIDTH
-    print 'Fast Rolling Hough Transform by Susan Clark'
-    print '*'*TEXTWIDTH
-    if filepath==None:
-        filepath = raw_input('Please enter the full relative path of a file to analyze:')
+
+def rht(filepath, output):
     
     print '1/3.. Loading Data'
     xy_array, datax, datay = getData(filepath)
@@ -343,9 +342,11 @@ def main(filepath=None):
     print '2/3:: ' #TODO Summary of Params
 
     print '3/3.. Runnigh Hough Transform'
-    hi_filename = filename + '_hi.npy'
-    hj_filename = filename + '_hj.npy'
-    hthets_filename = filename + '_hthets.npy'
+    import os
+
+    hi_filename = os.path.join(output, filename + '_hi.npy')
+    hj_filename = os.path.join(output, filename + '_hj.npy')
+    hthets_filename = os.path.join(output, filename + '_hthets.npy')
     print '3/3.. Your Data Will Be Saved As:', hi_filename, hj_filename, hthets_filename 
     
     Hthets, Hi, Hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) #TODO progress meter
@@ -441,7 +442,6 @@ def viewer(filepath):
     #Load Libraries
     from matplotlib.pyplot import plot, show, subplot, imshow, title, ylim #contour
     import numpy as np
-    import os
     
     #Loads in relevant files
     image, imx, imy = getData(filepath)
@@ -471,3 +471,45 @@ def viewer(filepath):
     if os
         os.startfile(filepath)
     '''
+
+
+def main(source, output='.'):
+    '''
+    source: A filename, or the name of a directory containing files to transform (file or dir)
+    output_dir: Directory to place output files (default: '.')
+    '''
+    print '*'*TEXTWIDTH
+    print 'Fast Rolling Hough Transform by Susan Clark'
+    print '*'*TEXTWIDTH
+
+    #Interpret Filenames from Input
+    source = str(source)
+    pathlist = []
+    import os
+    if not os.path.isdir(output):
+        exit('Invalid output parameter; must be directory.')
+        
+    if os.path.isfile(source):
+        #Input = File
+        pathlist.append(source)
+    elif os.path.isdir(source):
+        #Input = Directory
+        import os.listdir
+        for obj in os.listdir(source):
+            if os.path.isfile(obj):
+                pathlist.append(obj)
+    else:
+        #Input = Neither   
+        #main(raw_input('Please enter the pathname of a file to analyze:'), output)
+        exit('Invalid source parameter; must be file or directory.'
+
+    #Run RHT Over All Inputs
+    total = len(pathlist)
+    if total > 0:
+        done = 0
+        update_progress(float(done)/float(total), message='Overall Progress:')
+        for path in pathlist:            
+            rht(path, output)
+            done += 1
+            update_progress(float(done)/float(total), message='Overall Progress:')
+        
