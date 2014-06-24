@@ -21,13 +21,39 @@ import sys
 
 TEXTWIDTH = 40
 
+def putXYT(xyt_filename, hi, hj, hthets, compressed=False):
+    if compressed:
+        np.savez_compressed(xyt_filename, hi=hi, hj=hj, hthets=hthets)
+    else:
+        np.savez(xyt_filename, hi=hi, hj=hj, hthets=hthets)
+
+def getXYT(xyt_filename, rebuild=False):    
+    #Reads in a .npz file containing coordinate pairs in image space (hi, hj)
+    #And Hough space arrays covering theta space at each of those points
+    data = np.load(xyt_filename)
+    hi = data['hi']
+    hj = data['hj']
+    hthets = data['hthets']
+    if rebuild:
+        #Can recreate an entire 3D array of mostly 0s
+        image, imx, imy = getData(filepath)
+        xyt = np.zeros((imx, imy, len(hthets[0])))
+        coords = zip(hi, hj)
+        for c in range(len(coords)):
+            xyt[coords[c][0]][coords[c][1]] = hthets[c]
+        return xyt
+    else:
+        #Returns the sparse form only
+        return hi, hj, hthets
+
 def getData(filepath):
-    #This could replace the specialized code above if I'm using simple images
+    #Reads in and properly rotates images from various sources
+    #Supports .fits, .npy, and PIL formats
     if filepath.endswith('.fits'):
         hdulist = fits.open(filepath) #Opens HDU list
         gassslice = hdulist[0].data #Reads all data as an array
     elif filepath.endswith('.npy'):
-        gassslice = np.load(filepath)
+        gassslice = np.load(filepath) #Reads numpy files
     else:
         gassslice = imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
 
@@ -257,31 +283,28 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     datax, datay = data.shape
     for j in xrange(datay):        
 
-        update_progress(j/datay) #For monitoring progress TODO
+        update_progress(j/(datay-1.0)) #For monitoring progress TODO
         if j >= ucntr and j < (datay - ucntr):
             for i in xrange(datax):
                 
                 if i >= ucntr and i < (datax - ucntr):
 
                     #TODO
-                    #if mask is None or (mask is not None and mask[i,j] == 1): #Only necessary for GASS data
+                    if mask is None or (mask is not None and mask[i,j] == 1): #Only necessary for GASS data
+                            
+                        wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
                         
-                    wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
+                        h = npsum(npsum(wcube*xyt,axis=0), axis=0)
+                        
+                        hout = h/h1 - frac
+                        hout[hout<0.0] = 0.0
                     
-                    h = npsum(npsum(wcube*xyt,axis=0), axis=0)
-                    
-                    hout = h/h1 - frac
-                    hout[hout<0.0] = 0.0
-                
-                    if npsum(hout) > 0:
-                        htapp(hout)
-                        hiapp(i)
-                        hjapp(j)
-        
-    #end = time.clock()
-    #print 'Code time %.6f seconds' % (end - start)         
-    
-    return Hthets, Hi, Hj
+                        if npsum(hout) > 0:
+                            htapp(hout)
+                            hiapp(i)
+                            hjapp(j)    
+    print ''
+    return np.array(Hthets), np.array(Hi), np.array(Hj)
 
 #******************************************************************************************
 #Lowell's Additions to the Code
@@ -315,8 +338,7 @@ def center(filepath, shape=(500, 500)):
         up = int(datay//2+y//2)
         down = int(datay//2-y//2)
         cutout = np.array(xy_array[left:right, down:up])
-        split = filepath.split(".")
-        filename = '.'.join( split[0:len(split)-1] )
+        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
         center_filename = filename+'_center.npy'
         np.save(center_filename, cutout)
         return center_filename
@@ -324,38 +346,42 @@ def center(filepath, shape=(500, 500)):
         return None 
 
 
-def rht(filepath, output):
+def rht(filepath, output='.'):
     
-    print '1/3.. Loading Data'
+    #print '1/3.. Loading Data'
     xy_array, datax, datay = getData(filepath)
-    print '1/3.. Successfully Loaded Data!'
+    #print '1/3.. Successfully Loaded Data!'
 
-    split = filepath.split(".")
-    filename = '.'.join( split[0:len(split)-1] )
-    print '1/3:: Analyzing', filename, str(datax), 'x', str(datay)
+    filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+    print '1/3:: Analyzing', filename, str(datax)+'x'+str(datay)
 
-    print '2/3.. Setting Params'
+    #print '2/3.. Setting Params'
     #TODO wrap parameter input
-    isZEA = filepath.endswith('.fits') and (False) ##TODO READ FITS HEADER
-    wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, 50, 5, 0.70, isZEA)
-    print '2/3.. Successfully Set Params!'
-    print '2/3:: ' #TODO Summary of Params
+    if filepath.endswith('.fits'): 
+        hdu = fits.open(filepath)[0]
+        headers = hdu.header['CTYPE1'] + hdu.header['CTYPE2']
+        isZEA = any(['ZEA' in x.upper() for x in headers])
+    wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, 51, 10, 0.70, isZEA)
+    #print '2/3.. Successfully Set Params!'
+    print '2/3:: Line Size:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
 
-    print '3/3.. Runnigh Hough Transform'
+    #print '3/3.. Runnigh Hough Transform'
+    
     import os
 
     hi_filename = os.path.join(output, filename + '_hi.npy')
     hj_filename = os.path.join(output, filename + '_hj.npy')
     hthets_filename = os.path.join(output, filename + '_hthets.npy')
-    print '3/3.. Your Data Will Be Saved As:', hi_filename, hj_filename, hthets_filename 
+    #print '3/3.. Your Data Will Be Saved As:', hi_filename, hj_filename, hthets_filename 
     
-    Hthets, Hi, Hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) #TODO progress meter
-    hi = np.array(Hi)
-    hj = np.array(Hj)
-    hthets = np.array(Hthets)
+    hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)
+    xyt_filename = os.path.join(output, filename + '_xyt.npz')
+    putXYT( xyt_filename, hi, hj, hthets)
+
     np.save(hi_filename, hi)
     np.save(hj_filename, hj)
     np.save(hthets_filename, hthets)
+
     print '3/3:: Successfully Saved Data!'
 
 def interpret(filepath):
@@ -369,8 +395,7 @@ def interpret(filepath):
     '''
     try:
         #Read in rht output files
-        split = filepath.split(".")
-        filename = '.'.join( split[0:len(split)-1] )
+        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
         hi_filename = filename + '_hi.npy'
         hj_filename = filename + '_hj.npy'
         hthets_filename = filename + '_hthets.npy'
@@ -399,16 +424,13 @@ def interpret(filepath):
         #bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
         #overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
         outline = []
-        edge_val = 0.0
         overlay = copy.deepcopy(image)
-        def outline(i, j):
-            if 1 <= i and i <= imx-1 and 1 <= j and j <= imy-1 and backproj[i][j] == 0.0 and np.any(backproj[i-1:i+1, j-1:j+1]):
-                overlay[i][j] = edge_val
-        #u_outline = np.vectorize(outline, cache=True)
-        #u_outline.outer(range(imx), range(imy))
+        r = 3 #Must be smaller than imx//2 and imy//2
+        weight = 1.0/float(2*r+1)**2 #TODO
         for i in range(imx):
             for j in range(imy):
-                outline(i, j)
+                if backproj[i][j] == 0.0 and np.any(backproj[i-r:i+r, j-r:j+r]):
+                    overlay[i][j] = np.sum(backproj[i-r:i+r, j-r:j+r])*weight
         
         #Overlay output
         if filepath.endswith('.fits'):
@@ -421,21 +443,16 @@ def interpret(filepath):
             np.save(overlay_filename, overlay)
         else:
             import scipy.misc
-            overlay_filename =  filename + '_overlay.' + split[len(split)-1]
+            import os
+            overlay_filename =  filename + '_overlay' + filepath.lstrip(filename)
             #_______________________ #Must reverse overlay y-coords
             scipy.misc.imsave(overlay_filename, overlay[::-1])
-
-
         print 'Success'
 
-    
     except Exception as e:
         #Reported Failure
         raise e
         print 'Failure'
-
-        #Silent Failure
-        pass
     
 
 def viewer(filepath):
@@ -445,8 +462,7 @@ def viewer(filepath):
     
     #Loads in relevant files
     image, imx, imy = getData(filepath)
-    split = filepath.split(".")
-    filename = '.'.join( split[0:len(split)-1] )
+    filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
 
@@ -484,32 +500,38 @@ def main(source, output='.'):
 
     #Interpret Filenames from Input
     source = str(source)
+    output = str(output)
     pathlist = []
     import os
     if not os.path.isdir(output):
-        exit('Invalid output parameter; must be directory.')
-        
-    if os.path.isfile(source):
+        print 'Invalid output in main(); must be directory.'
+        return
+
+    if os.path.isfile(os.path.abspath(source)):
         #Input = File
         pathlist.append(source)
     elif os.path.isdir(source):
         #Input = Directory
-        import os.listdir
         for obj in os.listdir(source):
-            if os.path.isfile(obj):
+            if os.path.isfile(os.path.abspath(obj)):
                 pathlist.append(obj)
     else:
         #Input = Neither   
-        #main(raw_input('Please enter the pathname of a file to analyze:'), output)
-        exit('Invalid source parameter; must be file or directory.'
+        #rht(raw_input('Please enter the pathname of a file to analyze:'), output)
+        print 'Invalid source in main(); must be file or directory.'
+        return
 
-    #Run RHT Over All Inputs
-    total = len(pathlist)
-    if total > 0:
+    #Run RHT Over All Inputs 
+    print pathlist
+    total = len(pathlist) #TODO
+    if (total > 0):
+        print 'RHT Started for', source
         done = 0
-        update_progress(float(done)/float(total), message='Overall Progress:')
-        for path in pathlist:            
+        update_progress(float(done)/float(total), message='RHT:')
+        for path in pathlist:
+            print path
             rht(path, output)
             done += 1
-            update_progress(float(done)/float(total), message='Overall Progress:')
+            update_progress(float(done)/float(total), message='RHT:')
+        print 'RHT Complete in', output
         

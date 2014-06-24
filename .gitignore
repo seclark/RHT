@@ -4,6 +4,7 @@
 *.fits
 *.jpg
 *.pyc
+*.exe
 
 #################
 ## Eclipse
