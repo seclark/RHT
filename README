@@ -1,4 +1,92 @@
+==================================
 The Rolling Hough Transform (RHT)
 ==================================
 
 This is the Rolling Hough Transform, described in Clark, Peek, Putman 2014 (arXiv:1312.1338).
+
+==================================
+Requirements
+==================================
+Python 2.7
+numpy
+scipy
+astropy
+math
+copy
+matplotlib
+
+==================================
+Instructions For Use
+==================================
+1. Ensure your Python 2.7 Environment is as up-to-date as possible
+
+2. Ensure you are able to import the package
+
+>>>import fastrht as f
+
+3. Call the following code for single files, or in batch mode, with current params
+   Output will be placed alongside the input files in the .npz format
+
+>>>f.main('batch_directory') #For Batch Jobs
+>>>f.rht('filepath') #For Individual Images
+
+4. To modify wlen, smr, or frac manually, run setParams() 
+   wlen : Diameter of a 'window' - the data to be evaluated at one time
+   frac : fraction (percent) of one angle that must be 'lit up' to be counted
+   smr  : smoothing radius of unsharp mask function.
+
+>>>gassslice, datay, datax = getData('filepath')
+>>>wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, wlen, smr, frac)
+>>>hthets, hi, hj = window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)
+>>>np.save('test_hi.npy', hi)
+>>>np.save('test_hj.npy', hj)
+>>>np.save('test_hthets.npy', hthets)
+
+5. Looks for 'filepath_xyt.npz' to produce a backprojection and theta-frequency plot
+
+>>>f.interpret('filepath') 
+
+6. Loads and displays the results of previously analyzed data
+
+>>>f.viewer('filepath')
+
+==================================
+Directory Structure
+==================================
+
+RHT:
+|__This README
+
+|__Code based on fastrht.py for performing the Hough Transform
+
+|__Batch Files
+
+
+
+==================================
+Other Information
+==================================
+|__lrginput:
+
+   |__Image files >1MB which may need to be divided
+
+|__input:
+
+   |__Manageable .fits,.npy,etc image files <1MB
+   |__If imx,imy are the image dimensions, and wlen the window size,
+   |__O(RHT) ~ (imx-wlen)*(imy-wlen)*Ntheta(wlen)*wlen^2
+
+|__output:
+
+   |__i,j coordinates in image space, and the theta powers at that coordinate 
+   |__Holds a sparse 3D xytheta space determined by rht parameters  
+   |__A column in xytheta space is accessible by zipping _hi and _hj
+   |__Such that xytheta[_hi[n]][_hj[n]] = _hthets[n], and is zero everywhere else
+
+
+|__analysis:
+
+   |__
+   |__
+
+   
