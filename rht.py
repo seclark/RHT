@@ -562,18 +562,21 @@ def main(source=None):
 if __name__ == "__main__":
     try:
         import sys
-        source = sys.argv[1]
-        if source in ['help', '-help', 'H', '-H', 'h', '-h']:
-            readme = open(README, 'r')
-            print readme.read(2000)
-            if len(readme.read(1)) == 1:
-                print ''
-                print '...see', README, 'for more information...'
-                print ''
-        elif source in ['params', 'param', 'p', 'P', '-p', '-P', '-params', '-param']:
-            announce('Current Parameters:', 'wlen = '+wlen , 'wlen = '+wlen ,'wlen = '+wlen ) #TODO
-        else:
-            main(source)
+        if len(sys.argv) == 2:
+            source = sys.argv[1]
+            if source in ['help', '-help', 'H', '-H', 'h', '-h']:
+                readme = open(README, 'r')
+                print readme.read(2000)
+                if len(readme.read(1)) == 1:
+                    print ''
+                    print '...see', README, 'for more information...'
+                    print ''
+            elif source in ['params', 'param', 'p', 'P', '-p', '-P', '-params', '-param']:
+                announce('Current Parameters:', 'wlen = '+wlen , 'wlen = '+wlen ,'wlen = '+wlen ) #TODO
+            else:
+                main(source)
+        elif len(sys.argv) == 1:
+            main()
     except IOError:
         print README, 'does not refer to a readable README file'
     except:

@@ -16,19 +16,32 @@ copy
 matplotlib
 
 ==================================
-Instructions For Use
+Instructions For Use (Terminal)
+==================================
+>>>python rht.py #Displays short instructions
+
+>>>python rht.py -h #Displays the README
+
+>>>python rht.py -p #Displays default params (Not implemented yet!)
+
+>>>python rht.py file.fits #Runs rht('file.fits') if it's a readable image
+
+>>>python rht.py directory_name #Runs rht() for each readable image therein, using main('directory_name')
+
+==================================
+Instructions For Use (Python)
 ==================================
 1. Ensure your Python 2.7 Environment is as up-to-date as possible
 
 2. Ensure you are able to import the package
 
->>>import fastrht as f
+>>>import rht
 
 3. Call the following code for single files, or in batch mode, with current params
    Output will be placed alongside the input files in the .npz format
 
->>>f.main('batch_directory') #For Batch Jobs
->>>f.rht('filepath') #For Individual Images
+>>>rht.main('batch_directory') #For Batch Jobs
+>>>rht.rht('filepath') #For Individual Images
 
 4. To modify wlen, smr, or frac manually, run setParams() 
    wlen : Diameter of a 'window' - the data to be evaluated at one time
@@ -57,10 +70,11 @@ Directory Structure
 RHT:
 |__This README
 
+|__Updated rht.py python module
+
 |__Code based on fastrht.py for performing the Hough Transform
 
-|__Batch Files
-
+|__Batches of image files and their computed outputs
 
 
 ==================================
@@ -83,10 +97,3 @@ Other Information
    |__A column in xytheta space is accessible by zipping _hi and _hj
    |__Such that xytheta[_hi[n]][_hj[n]] = _hthets[n], and is zero everywhere else
 
-
-|__analysis:
-
-   |__
-   |__
-
-   
