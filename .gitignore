@@ -1,8 +1,7 @@
 #################
 ## Project Specific
 #################
-*.fits
-*.jpg
+lrginput/*
 *.pyc
 *.exe
 
