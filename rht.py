@@ -3,36 +3,76 @@
 # FAST ROLLING HOUGH TRANSFORM
 # ulen : length of unsharp mask square. Must be at least wlen + smr/2
 
-# ---------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------
+#Imports
+#-----------------------------------------------------------------------------------------
 from __future__ import division
 import numpy as np
+import scipy
+import scipy.ndimage
 import math
 from astropy import wcs
 from astropy.io import fits
-import scipy as sp
-from scipy.ndimage import filters, imread
-from matplotlib.pyplot import imshow, show
+import os
+from matplotlib.pyplot import plot, show, subplot, imshow, title, ylim, contour
 import copy
 import sys
+import string
 
+
+#-----------------------------------------------------------------------------------------
+#Parameters
+#-----------------------------------------------------------------------------------------
 TEXTWIDTH = 50 #Width of some displayed text objects
-README = 'README' #Name of rht's README file
 WLEN = 50 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.75 #fraction (percent) of one angle that must be 'lit up' to be counted
 SMR = 5 #smoothing radius of unsharp mask function
 
-def announce(strings):
-    if type(strings) == list:
-        print '*'*TEXTWIDTH
-        for string in strings: 
-            print str(string)
-        print '*'*TEXTWIDTH
-    elif type(strings) == str:
-        print '*'*TEXTWIDTH
-        print strings
-        print '*'*TEXTWIDTH
+#-----------------------------------------------------------------------------------------
+#Initialization
+#-----------------------------------------------------------------------------------------
+'''
 
-def putXYT(xyt_filename, hi, hj, hthets, compressed=False):
+'''
+
+#-----------------------------------------------------------------------------------------
+#Utility Functions
+#-----------------------------------------------------------------------------------------
+
+def announcement(strings):
+    result = ''
+    if type(strings) == list:
+        strings.append('*'*TEXTWIDTH)
+        strings.insert(0, '*'*TEXTWIDTH)
+        result = '\n'.join(string.center(str(s), TEXTWIDTH, ' ') for s in strings) 
+    elif type(strings) == str:
+        result = '\n'.join(['*'*TEXTWIDTH, string.center(strings, TEXTWIDTH, ' '), '*'*TEXTWIDTH])
+    return result
+
+def announce(strings):
+    print announcement(strings)
+
+def update_progress(progress, message='Progress:'):
+    #Create progress meter
+    if progress > 0.0 and progress <= 1.0:
+        p = int(TEXTWIDTH*progress/1.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p), message))
+        sys.stdout.flush()
+        if p == TEXTWIDTH:
+            print ''
+    elif progress > 0.0 and progress <= 100.0:
+        p = int(TEXTWIDTH*progress/100.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p), message)) 
+        sys.stdout.flush()
+        if p == TEXTWIDTH:
+            print ''
+    elif progress == 0.0:
+        sys.stdout.write('\r{1} [{0}]%'.format(' '*TEXTWIDTH, message))
+        sys.stdout.flush()
+    else:
+        pass ##TODO Progress Bar Failure
+
+def putXYT(xyt_filename, hi, hj, hthets, compressed=True):
     if compressed:
         np.savez_compressed(xyt_filename, hi=hi, hj=hj, hthets=hthets)
     else:
@@ -66,7 +106,7 @@ def getData(filepath):
     elif filepath.endswith('.npy'):
         gassslice = np.load(filepath) #Reads numpy files
     else:
-        gassslice = imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
+        gassslice = scipy.ndimage.imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
 
     x, y = gassslice.shape #Gets dimensions
     return gassslice, x, y
@@ -100,11 +140,12 @@ def setParams(gassslice, w, s, f, ZEA=False):
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
 
 
-# The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
-# which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
-# makemask just makes sure that nothing outside that circle is counted as data.
 
 def makemask(wkernel, gassslice):
+    # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
+    # which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
+    # makemask just makes sure that nothing outside that circle is counted as data.
+
     #gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
     #gassdata  = pyfits.getdata(gassfile, 0)
     #gassslice = gassdata[45, :, :]
@@ -131,7 +172,7 @@ def makemask(wkernel, gassslice):
     gm = np.zeros(gassslice.shape)
     #gm[worldcdec < 0] = 1
     
-    gmconv = filters.correlate(gm, weights=wkernel)
+    gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
     gg = copy.copy(gmconv)
     gg[gmconv < np.max(gmconv)] = 0
     gg[gmconv == np.max(gmconv)] = 1
@@ -156,7 +197,7 @@ def circ_kern(inkernel, radius):
 
 #Unsharp mask. Returns binary data.
 def umask(data, inkernel):    
-    outdata = filters.correlate(data, weights=inkernel)
+    outdata = scipy.ndimage.filters.correlate(data, weights=inkernel)
     
     #Our convolution has scaled outdata by sum(kernel), so we will divide out these weights.
     kernweight = np.sum(inkernel, axis=0)
@@ -317,37 +358,16 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     print ''
     return np.array(Hthets), np.array(Hi), np.array(Hj)
 
-#******************************************************************************************
-#Lowell's Additions to the Code
-#******************************************************************************************
+#-----------------------------------------------------------------------------------------
+#Interactive Functions
+#-----------------------------------------------------------------------------------------
 
-
-def update_progress(progress, message='Progress:'):
-    #Create progress meter
-    if progress > 0.0 and progress <= 1.0:
-        p = int(TEXTWIDTH*progress/1.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p), message))
-        sys.stdout.flush()
-        if p == TEXTWIDTH:
-            print ''
-    elif progress > 0.0 and progress <= 100.0:
-        p = int(TEXTWIDTH*progress/100.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p), message)) 
-        sys.stdout.flush()
-        if p == TEXTWIDTH:
-            print ''
-    elif progress == 0.0:
-        sys.stdout.write('\r{1} [{0}]%'.format(' '*TEXTWIDTH, message))
-        sys.stdout.flush()
-    else:
-        pass ##TODO Progress Bar Failure
 
 def center(filepath, shape=(500, 500)):
     #Returns a cutout from the center of the image
     xy_array, datax, datay = getData(filepath)
     x, y = shape
     if 0 < x < datax and 0 < y < datay:
-        import numpy as np
         left = int(datax//2-x//2)
         right = int(datax//2+x//2)
         up = int(datay//2+y//2)
@@ -372,6 +392,7 @@ def rht(filepath, output='.'):
 
     #print '2/3.. Setting Params'
     #TODO wrap parameter input
+    isZEA = False
     if filepath.endswith('.fits'): 
         hdu = fits.open(filepath)[0]
         headers = hdu.header['CTYPE1'] + hdu.header['CTYPE2']
@@ -381,9 +402,6 @@ def rht(filepath, output='.'):
     print '2/3:: Line Size:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
 
     #print '3/3.. Runnigh Hough Transform'
-    
-    import os
-
     hi_filename = os.path.join(output, filename + '_hi.npy')
     hj_filename = os.path.join(output, filename + '_hj.npy')
     hthets_filename = os.path.join(output, filename + '_hthets.npy')
@@ -401,79 +419,73 @@ def rht(filepath, output='.'):
 
 def interpret(filepath):
     '''
-    Fail-fast! #Optionally can report_errors!
-    Using name_hi.npy, name_hj.npy, name_hthets.npy,
+    Using name_xyt.npz INSTEAD OF name_hi.npy, name_hj.npy, name_hthets.npy,
     Prodces:
         Backprojection --> name_backproj.npy
         Backprojection Overlayed on Image --> name_overlay(.fits, .jpg, etc) 
         ThetaSpectrum --> name_spectrum.npy
     '''
-    try:
-        #Read in rht output files
-        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-        hi_filename = filename + '_hi.npy'
-        hj_filename = filename + '_hj.npy'
-        hthets_filename = filename + '_hthets.npy'
-        hi = np.load(hi_filename)
-        hj = np.load(hj_filename)
-        hthets = np.load(hthets_filename)
+    #Read in rht output files
+    filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+    hi, hj, hthets = getXYT()
 
-        #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
-        spectrum = [np.sum(theta) for theta in hthets]
-        spectrum_filename = filename + '_spectrum.npy'
-        np.save(spectrum_filename, np.array(spectrum))
+    #______________________________TODO
+    hi_filename = filename + '_hi.npy'
+    hj_filename = filename + '_hj.npy'
+    hthets_filename = filename + '_hthets.npy'
+    hi = np.load(hi_filename)
+    hj = np.load(hj_filename)
+    hthets = np.load(hthets_filename)
 
-        #Backprojection only *Full Size* #Requires image
-        image, imx, imy = getData(filepath)
-        backproj = np.zeros_like(image)
-        coords = zip(hi, hj)
-        #for c in range(len(coords)):
-            #backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
-        for c in coords:
-            backproj[c[1]][c[0]] = np.sum(hthets[coords.index(c)]) 
-        np.divide(backproj, np.sum(backproj), backproj)
-        backproj_filename = filename + '_backproj.npy'
-        np.save(backproj_filename, np.array(backproj))
+    #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
+    spectrum = [np.sum(theta) for theta in hthets]
+    spectrum_filename = filename + '_spectrum.npy'
+    np.save(spectrum_filename, np.array(spectrum))
 
-        #Overlay of backproj onto image
-        #bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
-        #overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
-        outline = []
-        overlay = copy.deepcopy(image)
-        r = 3 #Must be smaller than imx//2 and imy//2
-        weight = 1.0/float(2*r+1)**2 #TODO
-        for i in range(imx):
-            for j in range(imy):
-                if backproj[i][j] == 0.0 and np.any(backproj[i-r:i+r, j-r:j+r]):
-                    overlay[i][j] = np.sum(backproj[i-r:i+r, j-r:j+r])*weight
-        
-        #Overlay output
-        if filepath.endswith('.fits'):
-            #Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
-            overlay_filename = filename + '_overlay.fits'
-            hdu = fits.PrimaryHDU(overlay)
-            hdu.writeto(overlay_filename, clobber=True)
-        elif filepath.endswith('.npy'):
-            overlay_filename = filename + '_overlay.npy'
-            np.save(overlay_filename, overlay)
-        else:
-            import scipy.misc
-            import os
-            overlay_filename =  filename + '_overlay' + filepath.lstrip(filename)
-            #_______________________ #Must reverse overlay y-coords
-            scipy.misc.imsave(overlay_filename, overlay[::-1])
-        print 'Success'
+    #Backprojection only *Full Size* #Requires image
+    image, imx, imy = getData(filepath)
+    backproj = np.zeros_like(image)
+    coords = zip(hi, hj)
+    #for c in range(len(coords)):
+        #backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
+    for c in coords:
+        backproj[c[1]][c[0]] = np.sum(hthets[coords.index(c)]) 
+    np.divide(backproj, np.sum(backproj), backproj)
+    backproj_filename = filename + '_backproj.npy'
+    np.save(backproj_filename, np.array(backproj))
 
-    except Exception as e:
-        #Reported Failure
-        raise e
-        print 'Failure'
+    #Overlay of backproj onto image
+    #bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
+    #overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
+    outline = []
+    overlay = copy.deepcopy(image)
+    r = 3 #Must be smaller than imx//2 and imy//2
+    weight = 1.0/float(2*r+1)**2 #TODO
+    for i in range(imx):
+        for j in range(imy):
+            if backproj[i][j] == 0.0 and np.any(backproj[i-r:i+r, j-r:j+r]):
+                overlay[i][j] = np.sum(backproj[i-r:i+r, j-r:j+r])*weight
+    
+    #Overlay output
+    if filepath.endswith('.fits'):
+        #Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
+        overlay_filename = filename + '_overlay.fits'
+        hdu = fits.PrimaryHDU(overlay)
+        hdu.writeto(overlay_filename, clobber=True)
+    elif filepath.endswith('.npy'):
+        overlay_filename = filename + '_overlay.npy'
+        np.save(overlay_filename, overlay)
+    else:
+        overlay_filename =  filename + '_overlay' + filepath.lstrip(filename)
+        #_______________________ #Must reverse overlay y-coords
+        scipy.misc.imsave(overlay_filename, overlay[::-1])
+    print 'Success'
+
     
 
 def viewer(filepath):
     #Load Libraries
-    from matplotlib.pyplot import plot, show, subplot, imshow, title, ylim #contour
-    import numpy as np
+    
     
     #Loads in relevant files
     image, imx, imy = getData(filepath)
@@ -517,7 +529,6 @@ def main(source=None):
     
     #Interpret Filenames from Input
     pathlist = []
-    import os
     if os.path.isfile(source):
         #Input = File
         #print 'File Detected'
@@ -525,21 +536,18 @@ def main(source=None):
     elif os.path.isdir(source):
         #Input = Directory
         #print 'Directory Detected'
-        #print os.listdir(source)
         for obj in os.listdir(source):
             obj_path = os.path.join(source, obj)
             if os.path.isfile(obj_path):
                 pathlist.append(obj_path)
     else:
         #Input = Neither   
+        #_____________________________TODO
         print 'Invalid source encountered in main(); must be file or directory.'
-        main()
         return
 
     #Run RHT Over All Inputs 
-    #print pathlist
     announce('Fast Rolling Hough Transform by Susan Clark')
-    
     print 'RHT Started for:', source
     total = len(pathlist)
     if total == 0:
@@ -548,37 +556,101 @@ def main(source=None):
         rht(pathlist[0])
         print 'RHT Complete!'
     else:
-        done = 0
-        update_progress(float(done)/float(total), message='RHT:')
         for path in pathlist:
-            print path
             rht(path)
-            done += 1
-            update_progress(float(done)/float(total), message='RHT:')
         print 'RHT Complete!'
     return
         
+#-----------------------------------------------------------------------------------------
+#Command Line Mode
+#-----------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    try:
-        import sys
-        if len(sys.argv) == 2:
-            source = sys.argv[1]
-            if source in ['help', '-help', 'H', '-H', 'h', '-h']:
-                readme = open(README, 'r')
-                print readme.read(2000)
-                if len(readme.read(1)) == 1:
-                    print ''
-                    print '...see', README, 'for more information...'
-                    print ''
-            elif source in ['params', 'param', 'p', 'P', '-p', '-P', '-params', '-param']:
-                announce('Current Parameters:', 'wlen = '+wlen , 'wlen = '+wlen ,'wlen = '+wlen ) #TODO
-            else:
-                main(source)
-        elif len(sys.argv) == 1:
-            main()
-    except IOError:
-        print README, 'does not refer to a readable README file'
-    except:
-        main()
+    help = '''Rolling Hough Transform Utility
 
+Command Line Argument Format:
+>>>python rht.py arg1 arg2 ... argn 
+
+NO ARGS:
+ Displays README (#TODO or this message) and exits
+ >>>python rht.py
+
+SINGLE ARGS:
+ pathname ==> Input file or directory to run the RHT on
+ >>>python rht.py dirname/filename.fits
+  
+ -h, help ==> Displays this message (#TODO or README)
+ >>>python rht.py help
+
+ -p, params ==> Displays Default Params (#TODO Maybe)
+ >>>python rht.py -p
+ 
+MULTIPLE ARGS:
+ Creates 'dirname/filename_xyt.npz' for each input image
+ 1st ==> Path to input file or directory
+ 2nd:nth ==> Named inputs controlling params and flags
+  Flags: 
+  -d  #Sets whether ouput is displayed
+  Params:
+  -wlen=value  #Sets window diameter
+  -smr=value  #Sets smoothing radius
+  -frac=value  #Sets theta power threshold'''
+    
+    argn = len(sys.argv)
+    if argn == 1:
+        #Displays the README file   
+        README = 'README'
+        readme = open(README, 'r')
+        print readme.read(2000) 
+        if len(readme.read(1)) == 1:
+            print ''
+            print '...see', README, 'for more information...'
+            print ''
+        readme.close()
+
+    elif argn == 2:
+        #Parses input for single argument flags
+        source = sys.argv[1]
+        if source.lower() in ['help', '-help', 'h', '-h']:
+            announce(help)
+        elif source.lower() in ['params', 'param', 'p', '-p', '-params', '-param']:
+            announce('Current Parameters:', 'wlen = '+wlen , 'wlen = '+wlen ,'wlen = '+wlen ) #TODO
+        else:
+            main(source)
+
+    else:
+        source = sys.argv[1]
+        args = sys.argv[2:]
+        for arg in args:
+            if '=' not in arg:
+                #FLAGS which DO NOT carry values 
+                if arg.lower() in ['d', '-d', 'display', '-display' ]:
+                    pass #TODO_________________________________Turn on Display flag!
+                else:
+                    print 'UNKNOWN FLAG:', arg
+
+            else:
+                #PARAMETERS which DO carry values
+                argname = arg.lower().split('=')[0]
+                argval = arg.lower().split('=')[1] #TODO Handle errors
+                if argname in ['w', 'wlen', '-w', '-wlen']:
+                    WLEN = argval
+                elif argname in ['s', 'smr', '-s', '-smr']:
+                    SMR = argval
+                elif argname in ['f', 'frac', '-f', '-frac']:
+                    FRAC = argval
+                else:
+                    print 'UNKNOWN PARAMETER:', arg
+
+        main(source)
+
+    exit()
+        
+        
+
+#-----------------------------------------------------------------------------------------
+#Attribution
+#-----------------------------------------------------------------------------------------
+
+#This is the Rolling Hough Transform, described in Clark, Peek, Putman 2014 (arXiv:1312.1338).
+#Modifications to the RHT have been made by Lowell Schudel, CC'16.
