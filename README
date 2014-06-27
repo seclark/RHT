@@ -15,7 +15,7 @@ import math
 from astropy import wcs
 from astropy.io import fits
 import os
-from matplotlib.pyplot import plot, show, subplot, imshow, title, ylim, contour
+import matplotlib.pyplot as plt
 import copy
 import sys
 import string
@@ -27,17 +27,17 @@ Command Line Argument Format:
  >>>python rht.py arg1 arg2 ... argn 
 
 NO ARGS:
- Displays README (#TODO or this message) and exits
+ Displays README and exits
  >>>python rht.py
 
 SINGLE ARGS:
  pathname ==> Input file or directory to run the RHT on
  >>>python rht.py dirname/filename.fits
   
- -h, help ==> Displays this message (#TODO or README)
+ -h, help ==> Displays this message
  >>>python rht.py help
 
- -p, params ==> Displays Default Params (#TODO Maybe)
+ -p, params ==> Displays Default Params
  >>>python rht.py -p
  
 MULTIPLE ARGS:
@@ -68,11 +68,13 @@ Instructions For Use (Python)
 
 4. Looks for 'filepath_xyt.npz' to produce a backprojection and theta-frequency plot
 
->>>f.interpret('filepath') 
+>>>rht.interpret('filepath') 
+>>>interpret('filepath', force=True) #Will first call rht.rht('filepath') if necessary
 
 5. Loads and displays the results of previously analyzed data
 
->>>f.viewer('filepath')
+>>>rht.viewer('filepath') 
+>>>rht.viewer('filepath', force=True) #Will first call rht.interpret('filepath', force=True) if necessary
 
 ==================================
 #TODO
