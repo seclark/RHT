@@ -24,7 +24,7 @@ import string
 Instructions For Use (Terminal)
 ==================================
 Command Line Argument Format:
->>>python rht.py arg1 arg2 ... argn 
+ >>>python rht.py arg1 arg2 ... argn 
 
 NO ARGS:
  Displays README (#TODO or this message) and exits
