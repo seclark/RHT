@@ -23,7 +23,7 @@ import string
 #-----------------------------------------------------------------------------------------
 #Parameters
 #-----------------------------------------------------------------------------------------
-TEXTWIDTH = 50 #Width of some displayed text objects
+TEXTWIDTH = 60 #Width of some displayed text objects
 WLEN = 50 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.75 #fraction (percent) of one angle that must be 'lit up' to be counted
 SMR = 5 #smoothing radius of unsharp mask function
@@ -46,7 +46,10 @@ def announcement(strings):
         strings.insert(0, '*'*TEXTWIDTH)
         result = '\n'.join(string.center(str(s), TEXTWIDTH, ' ') for s in strings) 
     elif type(strings) == str:
-        result = '\n'.join(['*'*TEXTWIDTH, string.center(strings, TEXTWIDTH, ' '), '*'*TEXTWIDTH])
+        result = announcement(strings.split('\n'))
+        #result = '\n'.join(['*'*TEXTWIDTH, string.center(strings, TEXTWIDTH, ' '), '*'*TEXTWIDTH])
+    else:
+        result = announcement(str(strings))
     return result
 
 def announce(strings):
@@ -383,6 +386,10 @@ def center(filepath, shape=(500, 500)):
 
 def rht(filepath, output='.'):
     
+    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy']
+    if any([filepath.endswith(e) for e in excluded_file_endings]):
+        return False
+
     #print '1/3.. Loading Data'
     xy_array, datax, datay = getData(filepath)
     #print '1/3.. Successfully Loaded Data!'
@@ -415,6 +422,7 @@ def rht(filepath, output='.'):
     #np.save(hthets_filename, hthets)
 
     print '3/3:: Successfully Saved Data As', xyt_filename
+    return True
 
 def interpret(filepath, force=False):
     '''
@@ -469,7 +477,7 @@ def interpret(filepath, force=False):
 
     '''
     #Overlay of backproj onto image
-    #bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
+    #bg_weight = 0.1 #Dims originals image to 1/10 of the backproj maximum value
     #overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
     outline = []
     overlay = copy.deepcopy(image)
@@ -622,17 +630,17 @@ Command Line Argument Format:
  >>>python rht.py arg1 arg2 ... argn 
 
 NO ARGS:
- Displays README (#TODO or this message) and exits
+ Displays README and exits
  >>>python rht.py
 
 SINGLE ARGS:
  pathname ==> Input file or directory to run the RHT on
  >>>python rht.py dirname/filename.fits
   
- -h, help ==> Displays this message (#TODO or README)
+ -h, help ==> Displays this message
  >>>python rht.py help
 
- -p, params ==> Displays Default Params (#TODO Maybe)
+ -p, params ==> Displays Default Params
  >>>python rht.py -p
  
 MULTIPLE ARGS:
@@ -664,7 +672,7 @@ MULTIPLE ARGS:
         if source.lower() in ['help', '-help', 'h', '-h']:
             announce(help)
         elif source.lower() in ['params', 'param', 'p', '-p', '-params', '-param']:
-            params = ['Current RHT Parameters:']
+            params = ['Default RHT Parameters:']
             params.append('wlen = '+str(WLEN))
             params.append('smr = '+str(SMR))
             params.append('frac = '+str(FRAC))
