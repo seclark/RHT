@@ -14,7 +14,7 @@ import math
 from astropy import wcs
 from astropy.io import fits
 import os
-from matplotlib.pyplot import plot, show, subplot, imshow, title, ylim, contour
+import matplotlib.pyplot as plt
 import copy
 import sys
 import string
@@ -399,25 +399,24 @@ def rht(filepath, output='.'):
         isZEA = any(['ZEA' in x.upper() for x in headers])
     wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, 51, 10, 0.70, isZEA)
     #print '2/3.. Successfully Set Params!'
-    print '2/3:: Line Size:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
+    print '2/3:: Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
 
     #print '3/3.. Runnigh Hough Transform'
-    hi_filename = os.path.join(output, filename + '_hi.npy')
-    hj_filename = os.path.join(output, filename + '_hj.npy')
-    hthets_filename = os.path.join(output, filename + '_hthets.npy')
-    #print '3/3.. Your Data Will Be Saved As:', hi_filename, hj_filename, hthets_filename 
-    
     hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)
+    
     xyt_filename = os.path.join(output, filename + '_xyt.npz')
-    putXYT( xyt_filename, hi, hj, hthets)
+    putXYT(xyt_filename, hi, hj, hthets)
 
-    np.save(hi_filename, hi)
-    np.save(hj_filename, hj)
-    np.save(hthets_filename, hthets)
+    #hi_filename = os.path.join(output, filename + '_hi.npy')
+    #hj_filename = os.path.join(output, filename + '_hj.npy')
+    #hthets_filename = os.path.join(output, filename + '_hthets.npy')
+    #np.save(hi_filename, hi)
+    #np.save(hj_filename, hj)
+    #np.save(hthets_filename, hthets)
 
-    print '3/3:: Successfully Saved Data!'
+    print '3/3:: Successfully Saved Data As', xyt_filename
 
-def interpret(filepath):
+def interpret(filepath, force=False):
     '''
     Using name_xyt.npz INSTEAD OF name_hi.npy, name_hj.npy, name_hthets.npy,
     Prodces:
@@ -427,15 +426,29 @@ def interpret(filepath):
     '''
     #Read in rht output files
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-    hi, hj, hthets = getXYT()
+    xyt_filename = filename + '_xyt.npz'
 
-    #______________________________TODO
+    #Makes sure relevant files are present! #TODO See if this works!
+    required_files = [xyt_filename]
+    any_missing = any([not os.path.isfile(f) for f in required_files])
+    if any_missing:
+        if force:
+            #Runs rht(filepath), since that has not been done
+            rht(filepath)
+        else:
+            #Warns user against interpreting file
+            print 'Warning: required files not present for interpret(filepath)...'
+
+    #Proceed with iterpreting
+    hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
+    '''
     hi_filename = filename + '_hi.npy'
     hj_filename = filename + '_hj.npy'
     hthets_filename = filename + '_hthets.npy'
     hi = np.load(hi_filename)
     hj = np.load(hj_filename)
     hthets = np.load(hthets_filename)
+    '''
 
     #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
     spectrum = [np.sum(theta) for theta in hthets]
@@ -446,14 +459,15 @@ def interpret(filepath):
     image, imx, imy = getData(filepath)
     backproj = np.zeros_like(image)
     coords = zip(hi, hj)
-    #for c in range(len(coords)):
-        #backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
-    for c in coords:
-        backproj[c[1]][c[0]] = np.sum(hthets[coords.index(c)]) 
+    for c in range(len(coords)):
+        backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
+    #for c in coords: #SLOW VERSION, EQUIVALENT TO ABOVE
+        #backproj[c[1]][c[0]] = np.sum(hthets[coords.index(c)]) 
     np.divide(backproj, np.sum(backproj), backproj)
     backproj_filename = filename + '_backproj.npy'
     np.save(backproj_filename, np.array(backproj))
 
+    '''
     #Overlay of backproj onto image
     #bg_weight = 0.1 #Dims originals image to 10% of the backproj maximum value
     #overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
@@ -479,13 +493,12 @@ def interpret(filepath):
         overlay_filename =  filename + '_overlay' + filepath.lstrip(filename)
         #_______________________ #Must reverse overlay y-coords
         scipy.misc.imsave(overlay_filename, overlay[::-1])
+    '''
+
     print 'Success'
 
     
-
-def viewer(filepath):
-    #Load Libraries
-    
+def viewer(filepath, force=False):
     
     #Loads in relevant files
     image, imx, imy = getData(filepath)
@@ -493,35 +506,66 @@ def viewer(filepath):
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
 
+    #Makes sure relevant files are present! #TODO See if this works!
+    required_files = [backproj_filename, spectrum_filename]
+    any_missing = any([not os.path.isfile(f) for f in required_files])
+    if any_missing:
+        if force:
+            #Interprets file, since that has not been done
+            interpret(filepath, force=True)
+        else:
+            #Warns user against interpreting file
+            print 'Warning: required files not present for viewer(filepath)...'
+    
     print 'Backprojection'
     #contour(np.load(backproj_filename))
-    subplot(121)
-    imshow(image, cmap='gray')
-    ylim(0, imy)
-    title(filepath)
-    subplot(122)
-    imshow(np.load(backproj_filename), cmap='gray')
-    ylim(0, imy)
-    title(backproj_filename)
-    show()
+    plt.subplot(121)
+    plt.imshow(image, cmap='gray')
+    plt.ylim(0, imy)
+    plt.title(filepath)
+    plt.subplot(122)
+    plt.imshow(np.load(backproj_filename), cmap='gray')
+    plt.ylim(0, imy)
+    plt.title(backproj_filename)
+    plt.show()
+    #___________________________________TODO SAVE PLOT
+    plt.clf()
+    plt.cla()
+    plt.close()
 
     print 'Theta Spectrum'
     spectrum = np.load(spectrum_filename)
-    plot(np.linspace(0.0, 180.0, num=len(spectrum), endpoint=False), spectrum)
-    show()
+    ntheta = len(spectrum)
+    plt.plot(np.linspace(0.0, 180.0, num=ntheta, endpoint=False), spectrum)
+    #___________________________________TODO SAVE PLOT
+    plt.show()
+    plt.clf()
+    plt.cla()
+    plt.close()
 
-    '''
-    if os
-        os.startfile(filepath)
-    '''
+    #Polar plot of theta power
+    print 'Linearity'
+    r = np.append(spectrum, spectrum) 
+    t = np.linspace(0.0, 2*np.pi, num=len(r), endpoint=False)
+    plt.polar(t, r)
+    plt.show()
+    plt.clf()
+    plt.cla()
+    plt.close()
+
+    #Clear all
+    plt.clf()
+    plt.cla()
+    plt.close('all')
 
 
-def main(source=None):
+def main(source=None, display=False):
     '''
     source: A filename, or the name of a directory containing files to transform
+    display: Boolean flag determining if the input is to be interpreted and displayed
     '''
     #Ensure that the input is a non-None string
-    while source is None or source != str(source):
+    while source is None or source != str(source): #TODO Fix escape char bug
         try:
             source = raw_input('Please enter the name of a file or directory to transform:')
         except:
@@ -553,11 +597,17 @@ def main(source=None):
     if total == 0:
         print 'Error'#_____________________________TODO
     elif total == 1:
-        rht(pathlist[0])
+        if (display):
+            viewer(pathlist[0], force=True)
+        else:
+            rht(pathlist[0])
         print 'RHT Complete!'
     else:
         for path in pathlist:
-            rht(path)
+            if (display):
+                viewer(path, force=True)
+            else:
+                rht(path)
         print 'RHT Complete!'
     return
         
@@ -569,7 +619,7 @@ if __name__ == "__main__":
     help = '''Rolling Hough Transform Utility
 
 Command Line Argument Format:
->>>python rht.py arg1 arg2 ... argn 
+ >>>python rht.py arg1 arg2 ... argn 
 
 NO ARGS:
  Displays README (#TODO or this message) and exits
@@ -614,7 +664,11 @@ MULTIPLE ARGS:
         if source.lower() in ['help', '-help', 'h', '-h']:
             announce(help)
         elif source.lower() in ['params', 'param', 'p', '-p', '-params', '-param']:
-            announce('Current Parameters:', 'wlen = '+wlen , 'wlen = '+wlen ,'wlen = '+wlen ) #TODO
+            params = ['Current RHT Parameters:']
+            params.append('wlen = '+str(WLEN))
+            params.append('smr = '+str(SMR))
+            params.append('frac = '+str(FRAC))
+            announce(params) #__________________TODO
         else:
             main(source)
 
@@ -622,10 +676,12 @@ MULTIPLE ARGS:
         source = sys.argv[1]
         args = sys.argv[2:]
         for arg in args:
+            DISPLAY = False
             if '=' not in arg:
                 #FLAGS which DO NOT carry values 
                 if arg.lower() in ['d', '-d', 'display', '-display' ]:
-                    pass #TODO_________________________________Turn on Display flag!
+                    DISPLAY = True
+                    #TODO_________________________________Turn on Display flag!
                 else:
                     print 'UNKNOWN FLAG:', arg
 
@@ -642,7 +698,7 @@ MULTIPLE ARGS:
                 else:
                     print 'UNKNOWN PARAMETER:', arg
 
-        main(source)
+        main(source, display=DISPLAY)
 
     exit()
         
