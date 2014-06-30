@@ -252,12 +252,9 @@ def houghnew(img, theta=None, idl=False):
     wx, wy = img.shape    
     wmid = np.floor(wx/2)
     
-    if idl == True:
-        print 'idl values'
-        #Here's that ntheta again..
+    if idl:
         ntheta = math.ceil((np.pi*np.sqrt(2)*((wx-1)/2.0)))  
-        theta = np.arange(0, np.pi, np.pi/ntheta)
-        dtheta = np.pi/ntheta
+        theta = np.linspace(0, np.pi, ntheta)
 
     # compute the vertical bins (the distances)
     d = np.ceil(np.hypot(*img.shape))
@@ -345,7 +342,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
                 if i >= ucntr and i < (datax - ucntr):
 
                     #TODO
-                    if mask is None or (mask is not None and mask[i,j] == 1): #Only necessary for GASS data
+                    if mask is None or (mask is not None and mask[i,j] == 1): 
                             
                         wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
                         
