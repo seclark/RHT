@@ -9,8 +9,9 @@ import timeit
 import copy
 #_______________________________________________
 
-
-def houghnew(img, theta=None, idl=False):
+def function(img, theta=None, idl=False):
+    if img.ndim != 2:
+        raise ValueError('The input image must be 2-D')
 
     if theta is None:
         theta = np.linspace(-np.pi / 2, np.pi / 2, 180)
@@ -21,7 +22,6 @@ def houghnew(img, theta=None, idl=False):
     if idl:
         ntheta = math.ceil((np.pi*np.sqrt(2)*((wx-1)/2.0)))  
         theta = np.linspace(0, np.pi, ntheta)
-        
 
     # compute the vertical bins (the distances)
     d = np.ceil(np.hypot(*img.shape))
@@ -46,19 +46,25 @@ def houghnew(img, theta=None, idl=False):
 
         # compute the base distances
         distances = (x - wmid) * cT + (y - wmid) * sT
-
+        #distances = np.add(np.multiply(x, cT), np.multiply(y, sT)) - wmid*(cT+sT) 
+        
         # round the distances to the nearest integer
         # and shift them to a nonzero bin
-        shifted = np.round(distances) - bins[0]
+        #shifted = np.round(distances) - bins[0]
 
         # cast the shifted values to ints to use as indices
-        indices = shifted.astype(np.int)
-
+        #indices = shifted.astype(np.int)
+        
         # use bin count to accumulate the coefficients
-        bincount = np.bincount(indices)
-
+        #bincount = np.bincount(indices)
+        bincount = np.bincount(np.subtract(np.round(distances), bins[0]).astype(np.int), minlength=nr_bins)
+        
         # finally assign the proper values to the out array
-        out[:len(bincount), i] = bincount
+        #out[:len(bincount), i] = bincount
+
+        out.T[i] = bincount
+        #for j in np.arange(bincount.shape[0]):
+            #out.T[i][j] = bincount[j]
 
     return out, theta, bins
 

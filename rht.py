@@ -47,7 +47,6 @@ def announcement(strings):
         result = '\n'.join(string.center(str(s), TEXTWIDTH, ' ') for s in strings) 
     elif type(strings) == str:
         result = announcement(strings.split('\n'))
-        #result = '\n'.join(['*'*TEXTWIDTH, string.center(strings, TEXTWIDTH, ' '), '*'*TEXTWIDTH])
     else:
         result = announcement(str(strings))
     return result
@@ -217,6 +216,7 @@ def umask(data, inkernel):
 def fast_hough(in_arr, xyt, ntheta):
     incube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)
     out = np.sum(np.sum(incube*xyt,axis=0), axis=0)
+    #out = np.sum(incube*xyt)
     
     return out        
 
@@ -286,20 +286,18 @@ def houghnew(img, theta=None, idl=False):
 
         # cast the shifted values to ints to use as indices
         indices = shifted.astype(np.int)
-
+        
         # use bin count to accumulate the coefficients
         bincount = np.bincount(indices)
 
         # finally assign the proper values to the out array
-        out[:len(bincount), i] = bincount
+        #out[:len(bincount), i] = bincount
+        out.T[i] = bincount
 
     return out, theta, bins
 
 
 def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask): 
-
-                    
-
     update_progress(0.0)
     
     #Circular kernels
@@ -315,17 +313,12 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(wkernel, xyt, ntheta)
 
-    #start = time.clock()
     Hthets = []
     Hi = []
     Hj = []
     
-    #start0=time.clock()
     dcube = np.repeat(udata[:,:,np.newaxis], repeats=ntheta, axis=2)
-    #end0 = time.clock()
-    #print 'cube data', end0-start0 
     
-
     htapp = Hthets.append
     hiapp = Hi.append
     hjapp = Hj.append
@@ -347,10 +340,11 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
                         wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
                         
                         h = npsum(npsum(wcube*xyt,axis=0), axis=0)
-                        
+
                         hout = h/h1 - frac
                         hout[hout<0.0] = 0.0
-                    
+                        #hout.clip(min=0.0)
+
                         if npsum(hout) > 0:
                             htapp(hout)
                             hiapp(i)
@@ -601,12 +595,6 @@ def main(source=None, display=False):
     total = len(pathlist)
     if total == 0:
         print 'Error'#_____________________________TODO
-    elif total == 1:
-        if (display):
-            viewer(pathlist[0], force=True)
-        else:
-            rht(pathlist[0])
-        print 'RHT Complete!'
     else:
         for path in pathlist:
             if (display):
