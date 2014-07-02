@@ -1,7 +1,6 @@
 #!/usr/bin/python
-
-# FAST ROLLING HOUGH TRANSFORM
-# ulen : length of unsharp mask square. Must be at least wlen + smr/2
+#FAST ROLLING HOUGH TRANSFORM
+#Susan Clark, Lowell Schudel
 
 #-----------------------------------------------------------------------------------------
 #Imports
@@ -21,12 +20,13 @@ import string
 
 
 #-----------------------------------------------------------------------------------------
-#Parameters
+#Default Parameters
 #-----------------------------------------------------------------------------------------
 TEXTWIDTH = 60 #Width of some displayed text objects
-WLEN = 50 #Diameter of a 'window' to be evaluated at one time
-FRAC = 0.75 #fraction (percent) of one angle that must be 'lit up' to be counted
-SMR = 5 #smoothing radius of unsharp mask function
+WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
+FRAC = 0.75 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
+SMR = 5 #11.0 #smoothing radius of unsharp mask function
+# ulen : length of unsharp mask square. Must be at least wlen + smr/2
 
 #-----------------------------------------------------------------------------------------
 #Initialization
@@ -38,6 +38,38 @@ SMR = 5 #smoothing radius of unsharp mask function
 #-----------------------------------------------------------------------------------------
 #Utility Functions
 #-----------------------------------------------------------------------------------------
+def is_valid_file(filepath):
+    '''
+    filepath: Potentially a string path to a source image
+
+    return: Boolean, True ONLY when the image could have rht() applied successfully
+    '''
+    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy'] #TODO___More Endings
+    if any([filepath.endswith(e) for e in excluded_file_endings]):
+        return False
+    
+    excluded_file_content = ['_xyt', '_backproj', '_spectrum'] #TODO___More Exclusions
+    if any([e in filepath for e in excluded_file_content]):
+        return False
+
+    return True
+
+def center(filepath, shape=(500, 500)):
+    #Returns a cutout from the center of the image
+    xy_array, datax, datay = getData(filepath)
+    x, y = shape
+    if 0 < x < datax and 0 < y < datay:
+        left = int(datax//2-x//2)
+        right = int(datax//2+x//2)
+        up = int(datay//2+y//2)
+        down = int(datay//2-y//2)
+        cutout = np.array(xy_array[left:right, down:up])
+        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+        center_filename = filename+'_center.npy'
+        np.save(center_filename, cutout)
+        return center_filename
+    else:
+        return None 
 
 def announcement(strings):
     result = ''
@@ -47,7 +79,6 @@ def announcement(strings):
         result = '\n'.join(string.center(str(s), TEXTWIDTH, ' ') for s in strings) 
     elif type(strings) == str:
         result = announcement(strings.split('\n'))
-        #result = '\n'.join(['*'*TEXTWIDTH, string.center(strings, TEXTWIDTH, ' '), '*'*TEXTWIDTH])
     else:
         result = announcement(str(strings))
     return result
@@ -115,9 +146,9 @@ def getData(filepath):
     return gassslice, x, y
 
 def setParams(gassslice, w, s, f, ZEA=False):
-    wlen = w #101.0 #Window diameter
-    frac = f #0.70 #Theta-power threshold to store
-    smr = s #11.0 #Smoothing radius
+    wlen = float(w)  #Window diameter
+    frac = float(f) #Theta-power threshold to store
+    smr = float(s) #Smoothing radius
 
     ulen = np.ceil(wlen + smr/2) #Must be odd
     if np.mod(ulen, 2) == 0:
@@ -252,12 +283,9 @@ def houghnew(img, theta=None, idl=False):
     wx, wy = img.shape    
     wmid = np.floor(wx/2)
     
-    if idl == True:
-        print 'idl values'
-        #Here's that ntheta again..
+    if idl:
         ntheta = math.ceil((np.pi*np.sqrt(2)*((wx-1)/2.0)))  
-        theta = np.arange(0, np.pi, np.pi/ntheta)
-        dtheta = np.pi/ntheta
+        theta = np.linspace(0, np.pi, ntheta)
 
     # compute the vertical bins (the distances)
     d = np.ceil(np.hypot(*img.shape))
@@ -289,20 +317,18 @@ def houghnew(img, theta=None, idl=False):
 
         # cast the shifted values to ints to use as indices
         indices = shifted.astype(np.int)
-
+        
         # use bin count to accumulate the coefficients
         bincount = np.bincount(indices)
 
         # finally assign the proper values to the out array
         out[:len(bincount), i] = bincount
+        #out.T[i] = bincount
 
     return out, theta, bins
 
 
 def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask): 
-
-                    
-
     update_progress(0.0)
     
     #Circular kernels
@@ -318,17 +344,12 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(wkernel, xyt, ntheta)
 
-    #start = time.clock()
     Hthets = []
     Hi = []
     Hj = []
     
-    #start0=time.clock()
     dcube = np.repeat(udata[:,:,np.newaxis], repeats=ntheta, axis=2)
-    #end0 = time.clock()
-    #print 'cube data', end0-start0 
     
-
     htapp = Hthets.append
     hiapp = Hi.append
     hjapp = Hj.append
@@ -345,49 +366,36 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
                 if i >= ucntr and i < (datax - ucntr):
 
                     #TODO
-                    if mask is None or (mask is not None and mask[i,j] == 1): #Only necessary for GASS data
+                    if mask is None or (mask is not None and mask[i,j] == 1): 
                             
                         wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
                         
                         h = npsum(npsum(wcube*xyt,axis=0), axis=0)
-                        
+
                         hout = h/h1 - frac
                         hout[hout<0.0] = 0.0
-                    
+                        #hout.clip(min=0.0)
+
                         if npsum(hout) > 0:
                             htapp(hout)
                             hiapp(i)
                             hjapp(j)    
-    print ''
     return np.array(Hthets), np.array(Hi), np.array(Hj)
 
 #-----------------------------------------------------------------------------------------
 #Interactive Functions
 #-----------------------------------------------------------------------------------------
 
+def rht(filepath, wlen=WLEN, frac=FRAC, smr=SMR):
+    '''
+    filepath: String path to source image, which will have the Rolling Hough Transform applied
 
-def center(filepath, shape=(500, 500)):
-    #Returns a cutout from the center of the image
-    xy_array, datax, datay = getData(filepath)
-    x, y = shape
-    if 0 < x < datax and 0 < y < datay:
-        left = int(datax//2-x//2)
-        right = int(datax//2+x//2)
-        up = int(datay//2+y//2)
-        down = int(datay//2-y//2)
-        cutout = np.array(xy_array[left:right, down:up])
-        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-        center_filename = filename+'_center.npy'
-        np.save(center_filename, cutout)
-        return center_filename
-    else:
-        return None 
-
-
-def rht(filepath, output='.'):
-    
-    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy']
-    if any([filepath.endswith(e) for e in excluded_file_endings]):
+    wlen: Diameter of a 'window' to be evaluated at one time
+    frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
+    smr: Integer radius of gaussian smoothing kernel to be applied to an image
+    '''
+    if not is_valid_file(filepath):
+        #Checks to see if a file should have the rht applied to it...
         return False
 
     #print '1/3.. Loading Data'
@@ -402,15 +410,16 @@ def rht(filepath, output='.'):
     isZEA = False
     if filepath.endswith('.fits'): 
         hdu = fits.open(filepath)[0]
-        headers = hdu.header['CTYPE1'] + hdu.header['CTYPE2']
-        isZEA = any(['ZEA' in x.upper() for x in headers])
-    wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, 51, 10, 0.70, isZEA)
+        headers = hdu.header['CTYPE1'] + hdu.header['CTYPE2'] 
+        isZEA = any(['ZEA' in x.upper() for x in headers]) #TODO__More possibilities
+    wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, wlen, smr, frac, isZEA)
     #print '2/3.. Successfully Set Params!'
     print '2/3:: Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
 
     #print '3/3.. Runnigh Hough Transform'
     hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)
     
+    output='.'
     xyt_filename = os.path.join(output, filename + '_xyt.npz')
     putXYT(xyt_filename, hi, hj, hthets)
 
@@ -424,13 +433,20 @@ def rht(filepath, output='.'):
     print '3/3:: Successfully Saved Data As', xyt_filename
     return True
 
-def interpret(filepath, force=False):
+def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
-    Using name_xyt.npz INSTEAD OF name_hi.npy, name_hj.npy, name_hthets.npy,
-    Prodces:
+    filepath: String path to source image, used in forcing and backprojection
+    force: Boolean indicating if rht() should be run if required_files cannot be found
+
+    wlen: Diameter of a 'window' to be evaluated at one time
+    frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
+    smr: Integer radius of gaussian smoothing kernel to be applied to an image
+
+    Saves:
         Backprojection --> name_backproj.npy
-        Backprojection Overlayed on Image --> name_overlay(.fits, .jpg, etc) 
         ThetaSpectrum --> name_spectrum.npy
+
+    return: Boolean, if the function succeeded
     '''
     #Read in rht output files
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
@@ -442,10 +458,11 @@ def interpret(filepath, force=False):
     if any_missing:
         if force:
             #Runs rht(filepath), since that has not been done
-            rht(filepath)
+            rht(filepath, wlen=wlen, frac=frac, smr=smr)
         else:
             #Warns user against interpreting file
             print 'Warning: required files not present for interpret(filepath)...'
+            return False
 
     #Proceed with iterpreting
     hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
@@ -504,10 +521,24 @@ def interpret(filepath, force=False):
     '''
 
     print 'Success'
+    return True
 
     
-def viewer(filepath, force=False):
+def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
+    '''
+    filepath: String path to source image, used in forcing and backprojection
+    force: Boolean indicating if interpret() should be run if required_files cannot be found
+
+    wlen: Diameter of a 'window' to be evaluated at one time
+    frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
+    smr: Integer radius of gaussian smoothing kernel to be applied to an image
     
+    Plots:
+        name_backproj.npy --> Backprojection 
+        name_spectrum.npy --> ThetaSpectrum, Linearity
+
+    return: Boolean, if the function succeeded
+    '''
     #Loads in relevant files
     image, imx, imy = getData(filepath)
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
@@ -520,10 +551,11 @@ def viewer(filepath, force=False):
     if any_missing:
         if force:
             #Interprets file, since that has not been done
-            interpret(filepath, force=True)
+            interpret(filepath, force=True, wlen=wlen, frac=frac, smr=smr)
         else:
             #Warns user against interpreting file
             print 'Warning: required files not present for viewer(filepath)...'
+            return False
     
     print 'Backprojection'
     #contour(np.load(backproj_filename))
@@ -553,7 +585,7 @@ def viewer(filepath, force=False):
 
     #Polar plot of theta power
     print 'Linearity'
-    r = np.append(spectrum, spectrum) 
+    r = np.append(spectrum, spectrum) / 2.0 
     t = np.linspace(0.0, 2*np.pi, num=len(r), endpoint=False)
     plt.polar(t, r)
     plt.show()
@@ -561,25 +593,33 @@ def viewer(filepath, force=False):
     plt.cla()
     plt.close()
 
-    #Clear all
+    #Clear all and exit successfully
     plt.clf()
     plt.cla()
     plt.close('all')
+    return True
 
 
-def main(source=None, display=False):
+def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     source: A filename, or the name of a directory containing files to transform
     display: Boolean flag determining if the input is to be interpreted and displayed
+
+    wlen: Diameter of a 'window' to be evaluated at one time
+    frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
+    smr: Integer radius of gaussian smoothing kernel to be applied to an image
+
+    return: Boolean, if the function succeeded
     '''
     #Ensure that the input is a non-None string
-    while source is None or source != str(source): #TODO Fix escape char bug
+    while source is None or type(source) != str: #TODO Fix escape char bug
         try:
             source = raw_input('Please enter the name of a file or directory to transform:')
         except:
             source = None
     
-    #Interpret Filenames from Input
+    #______________________________________________________________________________CLEANS SOURCE
+    #Interpret whether the Input is a file or directory, excluding all else
     pathlist = []
     if os.path.isfile(source):
         #Input = File
@@ -594,30 +634,36 @@ def main(source=None, display=False):
                 pathlist.append(obj_path)
     else:
         #Input = Neither   
-        #_____________________________TODO
         print 'Invalid source encountered in main(); must be file or directory.'
-        return
+        return False
 
-    #Run RHT Over All Inputs 
-    announce('Fast Rolling Hough Transform by Susan Clark')
-    print 'RHT Started for:', source
-    total = len(pathlist)
-    if total == 0:
-        print 'Error'#_____________________________TODO
-    elif total == 1:
-        if (display):
-            viewer(pathlist[0], force=True)
-        else:
-            rht(pathlist[0])
-        print 'RHT Complete!'
-    else:
-        for path in pathlist:
+    pathlist = filter(is_valid_file, pathlist)
+    if len(pathlist) == 0:
+        print 'Invalid source encountered in main(); no valid images found.'
+        return False
+    #____________________________________________________________________________SOURCE IS CLEAN
+
+    #Run RHT Over All Valid Inputs 
+    announce(['Fast Rolling Hough Transform by Susan Clark', 'Started for: '+source])
+    #TODO batch progress bar
+    summary = []
+    for path in pathlist:
+        success = True
+        try:
             if (display):
-                viewer(path, force=True)
+                success = viewer(path, force=True, wlen=wlen, frac=frac, smr=smr)
             else:
-                rht(path)
-        print 'RHT Complete!'
-    return
+                success = rht(path, wlen=wlen, frac=frac, smr=smr)
+        except:
+            success = False
+        finally:
+            if success:
+                summary.append(path+': Passed')
+            else:
+                summary.append(path+': Failed')
+    summary.append('Complete!')
+    announce(summary)
+    return True
         
 #-----------------------------------------------------------------------------------------
 #Command Line Mode
@@ -654,19 +700,18 @@ MULTIPLE ARGS:
   -smr=value  #Sets smoothing radius
   -frac=value  #Sets theta power threshold'''
     
-    argn = len(sys.argv)
-    if argn == 1:
+    if len(sys.argv) == 1:
         #Displays the README file   
         README = 'README'
         readme = open(README, 'r')
-        print readme.read(2000) 
+        print readme.read(2000) #TODO
         if len(readme.read(1)) == 1:
             print ''
             print '...see', README, 'for more information...'
             print ''
         readme.close()
 
-    elif argn == 2:
+    elif len(sys.argv) == 2:
         #Parses input for single argument flags
         source = sys.argv[1]
         if source.lower() in ['help', '-help', 'h', '-h']:
@@ -676,41 +721,45 @@ MULTIPLE ARGS:
             params.append('wlen = '+str(WLEN))
             params.append('smr = '+str(SMR))
             params.append('frac = '+str(FRAC))
-            announce(params) #__________________TODO
+            announce(params)
         else:
             main(source)
 
     else:
         source = sys.argv[1]
         args = sys.argv[2:]
+        
+        #Default flag values
+        DISPLAY = False
+        
+        #Default param values
+        wlen = WLEN
+        frac = FRAC
+        smr = SMR
+
         for arg in args:
-            DISPLAY = False
             if '=' not in arg:
                 #FLAGS which DO NOT carry values 
                 if arg.lower() in ['d', '-d', 'display', '-display' ]:
                     DISPLAY = True
-                    #TODO_________________________________Turn on Display flag!
                 else:
                     print 'UNKNOWN FLAG:', arg
-
             else:
                 #PARAMETERS which DO carry values
                 argname = arg.lower().split('=')[0]
                 argval = arg.lower().split('=')[1] #TODO Handle errors
                 if argname in ['w', 'wlen', '-w', '-wlen']:
-                    WLEN = argval
+                    wlen = float(argval)
                 elif argname in ['s', 'smr', '-s', '-smr']:
-                    SMR = argval
+                    smr = float(argval)
                 elif argname in ['f', 'frac', '-f', '-frac']:
-                    FRAC = argval
+                    frac = float(argval)
                 else:
                     print 'UNKNOWN PARAMETER:', arg
 
-        main(source, display=DISPLAY)
+        main(source, display=DISPLAY, wlen=wlen, frac=frac, smr=smr)
 
     exit()
-        
-        
 
 #-----------------------------------------------------------------------------------------
 #Attribution

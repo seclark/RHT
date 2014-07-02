@@ -3,59 +3,89 @@
 #Lowell Schudel
 #GPU Test
 
-import numpy
-from numbapro import vectorize
-
-# Create a ufunc
-@vectorize(['float32(float32, float32)',
-            'float64(float64, float64)'])
-def sum(a, b):
-    return a + b
-
-# Use the ufunc
-a = numpy.arange(10)
-b = numpy.arange(10)
-result = sum(a, b)      # call the ufunc
-
-print("a = %s" % a)
-print("b = %s" % b)
-print("sum = %s" % result)
-
+import numpy as np
+from numbapro import autojit
+import timeit
+import copy
 #_______________________________________________
 
-htapp = Hthets.append
-hiapp = Hi.append
-hjapp = Hj.append
-npsum = np.sum
+def function(img, theta=None, idl=False):
+    if img.ndim != 2:
+        raise ValueError('The input image must be 2-D')
 
-#Loop: (j,i) are centerpoints of data window.
-datax, datay = data.shape
-
-for j in xrange(datay):
-
-    if j >= ucntr and j < (datay - ucntr):
-        
-        for i in xrange(datax):
-        
-            if i >= ucntr and i < (datax - ucntr):
+    if theta is None:
+        theta = np.linspace(-np.pi / 2, np.pi / 2, 180)
     
-                wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]
+    wx, wy = img.shape    
+    wmid = np.floor(wx/2)
+    
+    if idl:
+        ntheta = math.ceil((np.pi*np.sqrt(2)*((wx-1)/2.0)))  
+        theta = np.linspace(0, np.pi, ntheta)
 
-                h = npsum(npsum(wcube*xyt,axis=0), axis=0)
-                
-                hout = h/h1 - frac
-                hout[hout<0.0] = 0.0
-            
-                if npsum(hout) > 0:
-                    htapp(hout)
-                    hiapp(i)
-                    hjapp(j)
+    # compute the vertical bins (the distances)
+    d = np.ceil(np.hypot(*img.shape))
+    nr_bins = d
+    bins = np.linspace(-d/2, d/2, nr_bins)
+
+    # allocate the output image
+    out = np.zeros((nr_bins, len(theta)), dtype=np.uint64)
+
+    # precompute the sin and cos of the angles
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+
+    # find the indices of the non-zero values in
+    # the input image
+    y, x = np.nonzero(img)
+
+    # x and y can be large, so we can't just broadcast to 2D
+    # arrays as we may run out of memory. Instead we process
+    # one vertical slice at a time.
+    for i, (cT, sT) in enumerate(zip(cos_theta, sin_theta)):
+
+        # compute the base distances
+        distances = (x - wmid) * cT + (y - wmid) * sT
+        #distances = np.add(np.multiply(x, cT), np.multiply(y, sT)) - wmid*(cT+sT) 
+        
+        # round the distances to the nearest integer
+        # and shift them to a nonzero bin
+        #shifted = np.round(distances) - bins[0]
+
+        # cast the shifted values to ints to use as indices
+        #indices = shifted.astype(np.int)
+        
+        # use bin count to accumulate the coefficients
+        #bincount = np.bincount(indices)
+        bincount = np.bincount(np.subtract(np.round(distances), bins[0]).astype(np.int), minlength=nr_bins)
+        
+        # finally assign the proper values to the out array
+        #out[:len(bincount), i] = bincount
+
+        out.T[i] = bincount
+        #for j in np.arange(bincount.shape[0]):
+            #out.T[i][j] = bincount[j]
+
+    return out, theta, bins
 
 
-#_______________________________________________
+if __name__ == '__main__':
 
-for j in range(ucntr, (datay-ucntr)):
+    #Setup Statements
+    N=10
+    SETUP = 'import numpy as np; img = np.ones((600, 600)); from gputest import function'
+
+    #Timing Loop
+    oldstmt = 'function(img)' 
+    oldtime = timeit.timeit(stmt=oldstmt, setup=SETUP, number=N)/N
+    print 'OLD:', oldtime
+
+    newstmt = 'gu_func(img)'
+    newsetup = SETUP + '; from numbapro import autojit; gu_func = autojit(target="cpu")(function)'
+    newtime = timeit.timeit(stmt=newstmt, setup=newsetup, number=N)/N
+    print 'NEW:', newtime
 
     
-
+    print 'SPEEDUP:' + str(100*(1.0-newtime/oldtime)) + '%'
+    print 'Done.'
 
