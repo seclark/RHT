@@ -38,6 +38,21 @@ SMR = 5 #11.0 #smoothing radius of unsharp mask function
 #-----------------------------------------------------------------------------------------
 #Utility Functions
 #-----------------------------------------------------------------------------------------
+def is_valid_file(filepath):
+    '''
+    filepath: Potentially a string path to a source image
+
+    return: Boolean, True ONLY when the image could have rht() applied successfully
+    '''
+    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy'] #TODO___More Endings
+    if any([filepath.endswith(e) for e in excluded_file_endings]):
+        return False
+    
+    excluded_file_content = ['_xyt', '_backproj', '_spectrum'] #TODO___More Exclusions
+    if any([e in filepath for e in excluded_file_content]):
+        return False
+
+    return True
 
 def center(filepath, shape=(500, 500)):
     #Returns a cutout from the center of the image
@@ -379,8 +394,8 @@ def rht(filepath, wlen=WLEN, frac=FRAC, smr=SMR):
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
     smr: Integer radius of gaussian smoothing kernel to be applied to an image
     '''
-    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy'] #TODO___More Endings
-    if any([filepath.endswith(e) for e in excluded_file_endings]):
+    if not is_valid_file(filepath):
+        #Checks to see if a file should have the rht applied to it...
         return False
 
     #print '1/3.. Loading Data'
@@ -431,7 +446,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         Backprojection --> name_backproj.npy
         ThetaSpectrum --> name_spectrum.npy
 
-    return: Boolean, if the function suceeded or failed
+    return: Boolean, if the function succeeded
     '''
     #Read in rht output files
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
@@ -522,7 +537,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         name_backproj.npy --> Backprojection 
         name_spectrum.npy --> ThetaSpectrum, Linearity
 
-    return: Boolean, if the function suceeded or failed
+    return: Boolean, if the function succeeded
     '''
     #Loads in relevant files
     image, imx, imy = getData(filepath)
@@ -594,7 +609,7 @@ def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
     smr: Integer radius of gaussian smoothing kernel to be applied to an image
 
-    return: Boolean, if the function suceeded or failed
+    return: Boolean, if the function succeeded
     '''
     #Ensure that the input is a non-None string
     while source is None or type(source) != str: #TODO Fix escape char bug
@@ -603,7 +618,8 @@ def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
         except:
             source = None
     
-    #Interpret Filenames from Input
+    #______________________________________________________________________________CLEANS SOURCE
+    #Interpret whether the Input is a file or directory, excluding all else
     pathlist = []
     if os.path.isfile(source):
         #Input = File
@@ -621,21 +637,33 @@ def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
         print 'Invalid source encountered in main(); must be file or directory.'
         return False
 
-    #Run RHT Over All Inputs 
-    announce('Fast Rolling Hough Transform by Susan Clark')
-    print 'RHT Started for:', source
-    total = len(pathlist)
-    if total == 0:
-        print 'Error'#_____________________________TODO
+    pathlist = filter(is_valid_file, pathlist)
+    if len(pathlist) == 0:
+        print 'Invalid source encountered in main(); no valid images found.'
         return False
-    else:
-        for path in pathlist:
+    #____________________________________________________________________________SOURCE IS CLEAN
+
+    #Run RHT Over All Valid Inputs 
+    announce(['Fast Rolling Hough Transform by Susan Clark', 'Started for: '+source])
+    #TODO batch progress bar
+    summary = []
+    for path in pathlist:
+        success = True
+        try:
             if (display):
-                viewer(path, force=True, wlen=wlen, frac=frac, smr=smr)
+                success = viewer(path, force=True, wlen=wlen, frac=frac, smr=smr)
             else:
-                rht(path, wlen=wlen, frac=frac, smr=smr)
-        print 'RHT Complete!'
-        return True
+                success = rht(path, wlen=wlen, frac=frac, smr=smr)
+        except:
+            success = False
+        finally:
+            if success:
+                summary.append(path+': Passed')
+            else:
+                summary.append(path+': Failed')
+    summary.append('Complete!')
+    announce(summary)
+    return True
         
 #-----------------------------------------------------------------------------------------
 #Command Line Mode
@@ -732,8 +760,6 @@ MULTIPLE ARGS:
         main(source, display=DISPLAY, wlen=wlen, frac=frac, smr=smr)
 
     exit()
-        
-        
 
 #-----------------------------------------------------------------------------------------
 #Attribution
