@@ -136,14 +136,16 @@ def getData(filepath):
     #Supports .fits, .npy, and PIL formats
     if filepath.endswith('.fits'):
         hdulist = fits.open(filepath) #Opens HDU list
-        gassslice = hdulist[0].data #Reads all data as an array
+        data = hdulist[0].data #Reads all data as an array
     elif filepath.endswith('.npy'):
-        gassslice = np.load(filepath) #Reads numpy files
+        data = np.load(filepath) #Reads numpy files #TODO
     else:
-        gassslice = scipy.ndimage.imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
-
-    x, y = gassslice.shape #Gets dimensions
-    return gassslice, x, y
+        data = scipy.ndimage.imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
+    
+    data = np.array(data) 
+    x, y = data.shape #Gets dimensions
+    data = np.nan_to_num(data)
+    return data, x, y
 
 def setParams(gassslice, w, s, f, ZEA=False):
     wlen = float(w)  #Window diameter
@@ -397,41 +399,45 @@ def rht(filepath, wlen=WLEN, frac=FRAC, smr=SMR):
     if not is_valid_file(filepath):
         #Checks to see if a file should have the rht applied to it...
         return False
+    try:
+        #print '1/3.. Loading Data'
+        xy_array, datax, datay = getData(filepath)
+        #print '1/3.. Successfully Loaded Data!'
 
-    #print '1/3.. Loading Data'
-    xy_array, datax, datay = getData(filepath)
-    #print '1/3.. Successfully Loaded Data!'
+        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+        print '1/3:: Analyzing', filename, str(datax)+'x'+str(datay)
 
-    filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-    print '1/3:: Analyzing', filename, str(datax)+'x'+str(datay)
+        #print '2/3.. Setting Params'
+        #TODO wrap parameter input
+        isZEA = False
+        if filepath.endswith('.fits'): 
+            hdu = fits.open(filepath)[0]
+            headers = hdu.header['CTYPE1'] + hdu.header['CTYPE2'] 
+            isZEA = any(['ZEA' in x.upper() for x in headers]) #TODO__More possibilities
+        wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, wlen, smr, frac, isZEA)
+        #print '2/3.. Successfully Set Params!'
+        print '2/3:: Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
 
-    #print '2/3.. Setting Params'
-    #TODO wrap parameter input
-    isZEA = False
-    if filepath.endswith('.fits'): 
-        hdu = fits.open(filepath)[0]
-        headers = hdu.header['CTYPE1'] + hdu.header['CTYPE2'] 
-        isZEA = any(['ZEA' in x.upper() for x in headers]) #TODO__More possibilities
-    wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, wlen, smr, frac, isZEA)
-    #print '2/3.. Successfully Set Params!'
-    print '2/3:: Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
+        #print '3/3.. Runnigh Hough Transform'
+        hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)
+        
+        output='.'
+        xyt_filename = os.path.join(output, filename + '_xyt.npz')
+        putXYT(xyt_filename, hi, hj, hthets)
 
-    #print '3/3.. Runnigh Hough Transform'
-    hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)
-    
-    output='.'
-    xyt_filename = os.path.join(output, filename + '_xyt.npz')
-    putXYT(xyt_filename, hi, hj, hthets)
+        #hi_filename = os.path.join(output, filename + '_hi.npy')
+        #hj_filename = os.path.join(output, filename + '_hj.npy')
+        #hthets_filename = os.path.join(output, filename + '_hthets.npy')
+        #np.save(hi_filename, hi)
+        #np.save(hj_filename, hj)
+        #np.save(hthets_filename, hthets)
 
-    #hi_filename = os.path.join(output, filename + '_hi.npy')
-    #hj_filename = os.path.join(output, filename + '_hj.npy')
-    #hthets_filename = os.path.join(output, filename + '_hthets.npy')
-    #np.save(hi_filename, hi)
-    #np.save(hj_filename, hj)
-    #np.save(hthets_filename, hthets)
+        print '3/3:: Successfully Saved Data As', xyt_filename
+        return True
+    except:
+        raise
+        return False
 
-    print '3/3:: Successfully Saved Data As', xyt_filename
-    return True
 
 def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
@@ -655,6 +661,7 @@ def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
             else:
                 success = rht(path, wlen=wlen, frac=frac, smr=smr)
         except:
+            raise
             success = False
         finally:
             if success:
