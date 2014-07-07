@@ -7,14 +7,12 @@
 #-----------------------------------------------------------------------------------------
 from __future__ import division
 import numpy as np
-import scipy
 import scipy.ndimage
 import math
 from astropy import wcs
 from astropy.io import fits
 import os
 import matplotlib.pyplot as plt
-import copy
 import sys
 import string
 
@@ -63,7 +61,7 @@ def center(filepath, shape=(500, 500)):
         right = int(datax//2+x//2)
         up = int(datay//2+y//2)
         down = int(datay//2-y//2)
-        cutout = np.array(xy_array[left:right, down:up])
+        cutout = np.array(xy_array[down:up, left:right])
         filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
         center_filename = filename+'_center.npy'
         np.save(center_filename, cutout)
@@ -89,19 +87,19 @@ def announce(strings):
 def update_progress(progress, message='Progress:'):
     #Create progress meter
     if progress > 0.0 and progress <= 1.0:
-        p = int(TEXTWIDTH*progress/1.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p), message))
+        p = int((TEXTWIDTH//2)*progress/1.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2)-p), message))
         sys.stdout.flush()
-        if p == TEXTWIDTH:
+        if p == (TEXTWIDTH//2):
             print ''
     elif progress > 0.0 and progress <= 100.0:
-        p = int(TEXTWIDTH*progress/100.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(TEXTWIDTH-p), message)) 
+        p = int((TEXTWIDTH//2)*progress/100.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2)-p), message)) 
         sys.stdout.flush()
-        if p == TEXTWIDTH:
+        if p == (TEXTWIDTH//2):
             print ''
     elif progress == 0.0:
-        sys.stdout.write('\r{1} [{0}]%'.format(' '*TEXTWIDTH, message))
+        sys.stdout.write('\r{1} [{0}]%'.format(' '*(TEXTWIDTH//2), message))
         sys.stdout.flush()
     else:
         pass ##TODO Progress Bar Failure
@@ -143,7 +141,7 @@ def getData(filepath):
         data = scipy.ndimage.imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
     
     data = np.array(data) 
-    x, y = data.shape #Gets dimensions
+    y, x = data.shape #Gets dimensions
     data = np.nan_to_num(data)
     return data, x, y
 
@@ -209,7 +207,7 @@ def makemask(wkernel, gassslice):
     #gm[worldcdec < 0] = 1
     
     gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
-    gg = copy.copy(gmconv)
+    gg = gmconv.copy() #copy.copy(gmconv)
     gg[gmconv < np.max(gmconv)] = 0
     gg[gmconv == np.max(gmconv)] = 1
     
@@ -226,7 +224,7 @@ def circ_kern(inkernel, radius):
     nvals = mnvals[:,:][1] - kcntr
 
     rads = np.sqrt(nvals**2 + mvals**2)
-    outkernel = copy.copy(inkernel)
+    outkernel = inkernel.copy() #copy.copy(inkernel)
     outkernel[rads > radius/2] = 0
     
     return outkernel
@@ -241,7 +239,7 @@ def umask(data, inkernel):
     subtr_data = data - outdata/kernweight
     
     #Convert to binary data
-    bindata = copy.copy(subtr_data)
+    bindata = subtr_data.copy() #copy.copy(subtr_data)
     bindata[subtr_data > 0] = 1
     bindata[subtr_data <= 0] = 0
 
@@ -254,24 +252,24 @@ def fast_hough(in_arr, xyt, ntheta):
     return out        
 
 def all_thetas(window, thetbins):
-    wx, wy = window.shape #Parse x/y dimensions
+    wy, wx = window.shape #Parse x/y dimensions
     ntheta = len(thetbins) #Parse height in theta
     
     #Makes prism; output has dimensions (x, y, theta)
-    out = np.zeros((wx, wy, ntheta), np.int_)
+    out = np.zeros((wy, wx, ntheta), np.int_)
     
     for i in xrange(wx):
         for j in xrange(wy):
             #At each x/y value, create new single-pixel image
-            w_1 = np.zeros((wx, wy), np.float_)
+            w_1 = np.zeros((wy, wx), np.float_)
             
             # run the Hough for each point one at a time
-            if window[i,j] == 1:
-                w_1[i,j] = 1
+            if window[j,i] == 1:
+                w_1[j,i] = 1
        
                 H, thets, dist = houghnew(w_1, thetbins) 
-                rel = H[np.floor(len(dist)/2), :]
-                out[i, j, :] = rel
+                rel = H[np.floor(len(dist)/2), :] 
+                out[j, i, :] = rel
       
     return out    
 
@@ -280,13 +278,13 @@ def houghnew(img, theta=None, idl=False):
         raise ValueError('The input image must be 2-D')
 
     if theta is None:
-        theta = np.linspace(-np.pi / 2, np.pi / 2, 180)
+        theta = np.linspace(-np.pi / 2.0, np.pi / 2.0, 180)
     
-    wx, wy = img.shape    
-    wmid = np.floor(wx/2)
+    wy, wx = img.shape 
+    wmid = np.floor(wx/2.0)
     
     if idl:
-        ntheta = math.ceil((np.pi*np.sqrt(2)*((wx-1)/2.0)))  
+        ntheta = math.ceil((np.pi*np.sqrt(2.0)*((wx-1)/2.0)))  
         theta = np.linspace(0, np.pi, ntheta)
 
     # compute the vertical bins (the distances)
@@ -344,7 +342,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     udata = umask(data, kernel)
     
     #Hough transform of same-sized circular window of 1's
-    h1 = fast_hough(wkernel, xyt, ntheta)
+    h1 = fast_hough(wkernel, xyt, ntheta) #Length ntheta array
 
     Hthets = []
     Hi = []
@@ -358,7 +356,8 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     npsum = np.sum
 
     #Loop: (j,i) are centerpoints of data window.
-    datax, datay = data.shape
+    datay, datax = data.shape 
+    '''
     for j in xrange(datay):        
 
         update_progress(j/(datay-1.0)) #For monitoring progress TODO
@@ -366,22 +365,49 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
             for i in xrange(datax):
                 
                 if i >= ucntr and i < (datax - ucntr):
+                '''
+    #TODO-------------------------------------------------------   
+    start = ucntr
+    stopy = (datay-ucntr)
+    stopx = (datax-ucntr)
+    if stopx == np.floor(stopx): #TODO this is purely < stop
+        stopx += 1 
+    if stopy == np.floor(stopy): 
+        stopy += 1
 
-                    #TODO
-                    if mask is None or (mask is not None and mask[i,j] == 1): 
-                            
-                        wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
-                        
-                        h = npsum(npsum(wcube*xyt,axis=0), axis=0)
+    for j in np.arange(start, stopy, 1):        
+        update_progress((j-start)/(stopy-start-1.0)) #For monitoring progress TODO
+            
+        for i in np.arange(start, stopx, 1):
 
-                        hout = h/h1 - frac
-                        hout[hout<0.0] = 0.0
-                        #hout.clip(min=0.0)
+            #TODO-------------------------------------------------------
+            if mask is None or (mask is not None and mask[j,i] == 1):
 
-                        if npsum(hout) > 0:
-                            htapp(hout)
-                            hiapp(i)
-                            hjapp(j)    
+                try:
+                    wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
+
+                    h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
+                    #TODO CODE FAILS HERE, BY FAILING TO BROADCAST +/-1 length arrays!
+
+                    #if j == ucntr and i == ucntr:
+                    #print 'h', h.shape
+                    #print 'h1', h1.shape
+                    #print 'frac', frac 
+
+                    hout = h/h1 - frac #h, h1 are Length ntheta arrays
+                    hout[hout<0.0] = 0.0
+                    #hout.clip(min=0.0)
+                    
+                    #if npsum(hout) > 0:
+                    if any(hout):
+                        htapp(hout)
+                        hiapp(i)
+                        hjapp(j)
+                except:
+                    print 'Failure:', i, j, wcntr
+                finally:
+                    pass 
+
     return np.array(Hthets), np.array(Hi), np.array(Hj)
 
 #-----------------------------------------------------------------------------------------
@@ -458,7 +484,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
     xyt_filename = filename + '_xyt.npz'
 
-    #Makes sure relevant files are present! #TODO See if this works!
+    #Makes sure relevant files are present! 
     required_files = [xyt_filename]
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing:
@@ -491,40 +517,12 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     backproj = np.zeros_like(image)
     coords = zip(hi, hj)
     for c in range(len(coords)):
-        backproj[coords[c][0]][coords[c][1]] = np.sum(hthets[c]) 
+        backproj[coords[c][1]][coords[c][0]] = np.sum(hthets[c]) 
     #for c in coords: #SLOW VERSION, EQUIVALENT TO ABOVE
         #backproj[c[1]][c[0]] = np.sum(hthets[coords.index(c)]) 
     np.divide(backproj, np.sum(backproj), backproj)
     backproj_filename = filename + '_backproj.npy'
     np.save(backproj_filename, np.array(backproj))
-
-    '''
-    #Overlay of backproj onto image
-    #bg_weight = 0.1 #Dims originals image to 1/10 of the backproj maximum value
-    #overlay = np.add(np.multiply(image, bg_weight), np.multiply(image, backproj))
-    outline = []
-    overlay = copy.deepcopy(image)
-    r = 3 #Must be smaller than imx//2 and imy//2
-    weight = 1.0/float(2*r+1)**2 #TODO
-    for i in range(imx):
-        for j in range(imy):
-            if backproj[i][j] == 0.0 and np.any(backproj[i-r:i+r, j-r:j+r]):
-                overlay[i][j] = np.sum(backproj[i-r:i+r, j-r:j+r])*weight
-    
-    #Overlay output
-    if filepath.endswith('.fits'):
-        #Fits File: http://astropy.readthedocs.org/en/latest/io/fits/#creating-a-new-image-file
-        overlay_filename = filename + '_overlay.fits'
-        hdu = fits.PrimaryHDU(overlay)
-        hdu.writeto(overlay_filename, clobber=True)
-    elif filepath.endswith('.npy'):
-        overlay_filename = filename + '_overlay.npy'
-        np.save(overlay_filename, overlay)
-    else:
-        overlay_filename =  filename + '_overlay' + filepath.lstrip(filename)
-        #_______________________ #Must reverse overlay y-coords
-        scipy.misc.imsave(overlay_filename, overlay[::-1])
-    '''
 
     print 'Success'
     return True
@@ -551,7 +549,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
 
-    #Makes sure relevant files are present! #TODO See if this works!
+    #Makes sure relevant files are present!
     required_files = [backproj_filename, spectrum_filename]
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing:
