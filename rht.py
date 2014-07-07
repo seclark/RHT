@@ -120,10 +120,11 @@ def getXYT(xyt_filename, rebuild=False):
     if rebuild:
         #Can recreate an entire 3D array of mostly 0s
         image, imx, imy = getData(filepath)
-        xyt = np.zeros((imx, imy, len(hthets[0])))
+        ntheta = len(hthets[0])
+        xyt = np.zeros((imy, imx, ntheta))
         coords = zip(hi, hj)
         for c in range(len(coords)):
-            xyt[coords[c][0]][coords[c][1]] = hthets[c]
+            xyt[coords[c][1]][coords[c][0]] = hthets[c]
         return xyt
     else:
         #Returns the sparse form only
