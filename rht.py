@@ -87,19 +87,19 @@ def announce(strings):
 def update_progress(progress, message='Progress:'):
     #Create progress meter
     if progress > 0.0 and progress <= 1.0:
-        p = int((TEXTWIDTH//2)*progress/1.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2)-p), message))
+        p = int((TEXTWIDTH//2+2)*progress/1.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2+2)-p), message))
         sys.stdout.flush()
-        if p == (TEXTWIDTH//2):
+        if p == (TEXTWIDTH//2+2):
             print ''
     elif progress > 0.0 and progress <= 100.0:
-        p = int((TEXTWIDTH//2)*progress/100.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2)-p), message)) 
+        p = int((TEXTWIDTH//2+2)*progress/100.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2+2)-p), message)) 
         sys.stdout.flush()
-        if p == (TEXTWIDTH//2):
+        if p == (TEXTWIDTH//2+2):
             print ''
     elif progress == 0.0:
-        sys.stdout.write('\r{1} [{0}]%'.format(' '*(TEXTWIDTH//2), message))
+        sys.stdout.write('\r{1} [{0}]%'.format(' '*(TEXTWIDTH//2+2), message))
         sys.stdout.flush()
     else:
         pass ##TODO Progress Bar Failure
@@ -337,20 +337,17 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     kernel = circ_kern(wsquare1, smr) #Stores an smr-sized circle
     wkernel = circ_kern(wsquare1, wlen) #And an wlen-sized circle
     xyt = all_thetas(wkernel, theta) #Cylinder of all theta values per point
-    ##print xyt.shape, 'xyt shape'
 
     #unsharp mask the whole data set
     udata = umask(data, kernel)
     
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(wkernel, xyt, ntheta) #Length ntheta array
+    dcube = np.repeat(udata[:,:,np.newaxis], repeats=ntheta, axis=2)
 
     Hthets = []
     Hi = []
     Hj = []
-    
-    dcube = np.repeat(udata[:,:,np.newaxis], repeats=ntheta, axis=2)
-    
     htapp = Hthets.append
     hiapp = Hi.append
     hjapp = Hj.append
@@ -359,14 +356,10 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     #Loop: (j,i) are centerpoints of data window.
     datay, datax = data.shape 
     '''
-    for j in xrange(datay):        
-
+    for j in xrange(datay) if j >= ucntr and j < (datay - ucntr):        
         update_progress(j/(datay-1.0)) #For monitoring progress TODO
-        if j >= ucntr and j < (datay - ucntr):
-            for i in xrange(datax):
-                
-                if i >= ucntr and i < (datax - ucntr):
-                '''
+        for i in xrange(datax) if i >= ucntr and i < (datax - ucntr):
+            '''
     #TODO-------------------------------------------------------   
     start = ucntr
     stopy = (datay-ucntr)
@@ -375,30 +368,17 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
         stopx += 1 
     if stopy == np.floor(stopy): 
         stopy += 1
-
     for j in np.arange(start, stopy, 1):        
         update_progress((j-start)/(stopy-start-1.0)) #For monitoring progress TODO
-            
         for i in np.arange(start, stopx, 1):
-
             #TODO-------------------------------------------------------
             if mask is None or (mask is not None and mask[j,i] == 1):
-
                 try:
-                    wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
-
+                    wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
                     h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
-                    #TODO CODE FAILS HERE, BY FAILING TO BROADCAST +/-1 length arrays!
-
-                    #if j == ucntr and i == ucntr:
-                    #print 'h', h.shape
-                    #print 'h1', h1.shape
-                    #print 'frac', frac 
-
-                    hout = h/h1 - frac #h, h1 are Length ntheta arrays
+                    hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
                     hout[hout<0.0] = 0.0
                     #hout.clip(min=0.0)
-                    
                     #if npsum(hout) > 0:
                     if any(hout):
                         htapp(hout)
@@ -415,18 +395,30 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 #Interactive Functions
 #-----------------------------------------------------------------------------------------
 
-def rht(filepath, wlen=WLEN, frac=FRAC, smr=SMR):
+def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     filepath: String path to source image, which will have the Rolling Hough Transform applied
+    force: Boolean indicating if rht() should still be run, even when output exists for these inputs
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
     smr: Integer radius of gaussian smoothing kernel to be applied to an image
+
+    Saves:
+        X-Y-ThetaPower Array --> name_xyt.npz
+
+    return: Boolean, if the function succeeded
     '''
     if not is_valid_file(filepath):
         #Checks to see if a file should have the rht applied to it...
         return False
+
     try:
+        if not force:
+            #TODO CHECK WHETHER AN OUTPUT EXISTS WITH THIS PARAMETER INPUT FIRST!! ______________________________________________
+            pass
+
+
         #print '1/3.. Loading Data'
         xy_array, datax, datay = getData(filepath)
         #print '1/3.. Successfully Loaded Data!'
@@ -452,24 +444,16 @@ def rht(filepath, wlen=WLEN, frac=FRAC, smr=SMR):
         xyt_filename = os.path.join(output, filename + '_xyt.npz')
         putXYT(xyt_filename, hi, hj, hthets)
 
-        #hi_filename = os.path.join(output, filename + '_hi.npy')
-        #hj_filename = os.path.join(output, filename + '_hj.npy')
-        #hthets_filename = os.path.join(output, filename + '_hthets.npy')
-        #np.save(hi_filename, hi)
-        #np.save(hj_filename, hj)
-        #np.save(hthets_filename, hthets)
-
         print '3/3:: Successfully Saved Data As', xyt_filename
         return True
     except:
-        raise
         return False
 
 
 def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     filepath: String path to source image, used in forcing and backprojection
-    force: Boolean indicating if rht() should be run if required_files cannot be found
+    force: Boolean indicating if rht() should be run, even when required_files are found
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
@@ -489,24 +473,19 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     required_files = [xyt_filename]
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing:
+        #Runs rht(filepath), since that has not been done
+        rht(filepath, force=force, wlen=wlen, frac=frac, smr=smr)       #TODO FORCE__________
+    else:
         if force:
-            #Runs rht(filepath), since that has not been done
-            rht(filepath, wlen=wlen, frac=frac, smr=smr)
+            #Runs rht(filepath), even if it has been done
+            rht(filepath, force=True, wlen=wlen, frac=frac, smr=smr)
         else:
-            #Warns user against interpreting file
-            print 'Warning: required files not present for interpret(filepath)...'
-            return False
+            #Good to go! No rht needed!
+            pass 
+
 
     #Proceed with iterpreting
     hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
-    '''
-    hi_filename = filename + '_hi.npy'
-    hj_filename = filename + '_hj.npy'
-    hthets_filename = filename + '_hthets.npy'
-    hi = np.load(hi_filename)
-    hj = np.load(hj_filename)
-    hthets = np.load(hthets_filename)
-    '''
 
     #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
     spectrum = [np.sum(theta) for theta in hthets]
@@ -532,7 +511,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     filepath: String path to source image, used in forcing and backprojection
-    force: Boolean indicating if interpret() should be run if required_files cannot be found
+    force: Boolean indicating if interpret() should be run, even when required_files are found
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
@@ -554,13 +533,15 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     required_files = [backproj_filename, spectrum_filename]
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing:
+        #Interprets file, since that has not been done
+        interpret(filepath, force=force, wlen=wlen, frac=frac, smr=smr)  #TODO FORCE__________
+    else:
         if force:
-            #Interprets file, since that has not been done
+            #Interprets file, even if it has been done
             interpret(filepath, force=True, wlen=wlen, frac=frac, smr=smr)
         else:
-            #Warns user against interpreting file
-            print 'Warning: required files not present for viewer(filepath)...'
-            return False
+            #Good to go! No interpretation needed!
+            pass 
     
     print 'Backprojection'
     #contour(np.load(backproj_filename))
@@ -605,10 +586,11 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     return True
 
 
-def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
+def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     source: A filename, or the name of a directory containing files to transform
     display: Boolean flag determining if the input is to be interpreted and displayed
+    force: Boolean flag determining if rht() will be run, when output already exists
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
@@ -660,7 +642,6 @@ def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
             else:
                 success = rht(path, wlen=wlen, frac=frac, smr=smr)
         except:
-            raise
             success = False
         finally:
             if success:
@@ -689,18 +670,21 @@ SINGLE ARGS:
  pathname ==> Input file or directory to run the RHT on
  >>>python rht.py dirname/filename.fits
   
- -h, help ==> Displays this message
+ -h ==> Displays this message
  >>>python rht.py help
 
- -p, params ==> Displays Default Params
+ -p ==> Displays Default Params
  >>>python rht.py -p
  
 MULTIPLE ARGS:
  Creates 'dirname/filename_xyt.npz' for each input image
  1st ==> Path to input file or directory
  2nd:nth ==> Named inputs controlling params and flags
+
   Flags: 
-  -d  #Sets whether ouput is displayed
+  -d  #Ouput is to be Displayed
+  -f  #Exisitng _xyt.npz is to be Forcefully overwritten
+
   Params:
   -wlen=value  #Sets window diameter
   -smr=value  #Sets smoothing radius
@@ -737,6 +721,7 @@ MULTIPLE ARGS:
         
         #Default flag values
         DISPLAY = False
+        FORCE = False
         
         #Default param values
         wlen = WLEN
@@ -748,6 +733,8 @@ MULTIPLE ARGS:
                 #FLAGS which DO NOT carry values 
                 if arg.lower() in ['d', '-d', 'display', '-display' ]:
                     DISPLAY = True
+                elif arg.lower() in ['f', '-f', 'force', '-force' ]:
+                    FORCE = True
                 else:
                     print 'UNKNOWN FLAG:', arg
             else:
@@ -763,7 +750,7 @@ MULTIPLE ARGS:
                 else:
                     print 'UNKNOWN PARAMETER:', arg
 
-        main(source, display=DISPLAY, wlen=wlen, frac=frac, smr=smr)
+        main(source, display=DISPLAY, force=FORCE, wlen=wlen, frac=frac, smr=smr)
 
     exit()
 
