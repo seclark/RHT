@@ -355,39 +355,43 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 
     #Loop: (j,i) are centerpoints of data window.
     datay, datax = data.shape 
-    '''
-    for j in xrange(datay) if j >= ucntr and j < (datay - ucntr):        
-        update_progress(j/(datay-1.0)) #For monitoring progress TODO
-        for i in xrange(datax) if i >= ucntr and i < (datax - ucntr):
-            '''
-    #TODO-------------------------------------------------------   
-    start = ucntr
-    stopy = (datay-ucntr)
-    stopx = (datax-ucntr)
-    if stopx == np.floor(stopx): #TODO this is purely < stop
-        stopx += 1 
-    if stopy == np.floor(stopy): 
-        stopy += 1
-    for j in np.arange(start, stopy, 1):        
-        update_progress((j-start)/(stopy-start-1.0)) #For monitoring progress TODO
-        for i in np.arange(start, stopx, 1):
-            #TODO-------------------------------------------------------
-            if mask is None or (mask is not None and mask[j,i] == 1):
-                try:
-                    wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
-                    h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
-                    hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
-                    hout[hout<0.0] = 0.0
-                    #hout.clip(min=0.0)
-                    #if npsum(hout) > 0:
-                    if any(hout):
-                        htapp(hout)
-                        hiapp(i)
-                        hjapp(j)
-                except:
-                    print 'Failure:', i, j, wcntr
-                finally:
-                    pass 
+    
+    for j in xrange(datay): 
+        if j >= ucntr and j < (datay - ucntr):        
+            update_progress((j-ucntr)/(datay-2.0*ucntr-1.0)) #For monitoring progress TODO
+            for i in xrange(datax): 
+                if i >= ucntr and i < (datax - ucntr):
+            
+                    '''#TODO-------------------------------------------------------   
+                    start = ucntr
+                    stopy = (datay-ucntr)
+                    stopx = (datax-ucntr)
+                    if stopx == np.floor(stopx): #TODO this is purely < stop
+                        stopx += 1 
+                    if stopy == np.floor(stopy): 
+                        stopy += 1
+                    for j in np.arange(start, stopy, 1):        
+                        update_progress((j-start)/(stopy-start-1.0)) #For monitoring progress TODO
+                        for i in np.arange(start, stopx, 1):
+                    '''
+                    #TODO-------------------------------------------------------
+                    if mask is None or (mask is not None and mask[j,i] == 1):
+                        try:
+                            wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
+                            h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
+                            hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
+                            hout[hout<0.0] = 0.0
+                            #hout.clip(min=0.0)
+                            #if npsum(hout) > 0:
+                            if any(hout):
+                                htapp(hout)
+                                hiapp(i)
+                                hjapp(j)
+                        except:
+                            print 'Failure:', i, j, wcntr
+                            raise
+                        #finally:
+                            #pass 
 
     return np.array(Hthets), np.array(Hi), np.array(Hj)
 
@@ -703,20 +707,20 @@ MULTIPLE ARGS:
 
     elif len(sys.argv) == 2:
         #Parses input for single argument flags
-        source = sys.argv[1]
-        if source.lower() in ['help', '-help', 'h', '-h']:
+        SOURCE = sys.argv[1]
+        if SOURCE.lower() in ['help', '-help', 'h', '-h']:
             announce(help)
-        elif source.lower() in ['params', 'param', 'p', '-p', '-params', '-param']:
+        elif SOURCE.lower() in ['params', 'param', 'p', '-p', '-params', '-param']:
             params = ['Default RHT Parameters:']
             params.append('wlen = '+str(WLEN))
             params.append('smr = '+str(SMR))
             params.append('frac = '+str(FRAC))
             announce(params)
         else:
-            main(source)
+            main(source=SOURCE)
 
     else:
-        source = sys.argv[1]
+        SOURCE = sys.argv[1]
         args = sys.argv[2:]
         
         #Default flag values
@@ -750,7 +754,7 @@ MULTIPLE ARGS:
                 else:
                     print 'UNKNOWN PARAMETER:', arg
 
-        main(source, display=DISPLAY, force=FORCE, wlen=wlen, frac=frac, smr=smr)
+        main(source=SOURCE, display=DISPLAY, force=FORCE, wlen=wlen, frac=frac, smr=smr)
 
     exit()
 
