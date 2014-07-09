@@ -54,7 +54,8 @@ def is_valid_file(filepath):
 
 def center(filepath, shape=(500, 500)):
     #Returns a cutout from the center of the image
-    xy_array, datax, datay = getData(filepath)
+    xy_array = getData(filepath)
+    datay, datax = xy_array.shapy 
     x, y = shape
     if 0 < x < datax and 0 < y < datay:
         left = int(datax//2-x//2)
@@ -119,7 +120,8 @@ def getXYT(xyt_filename, rebuild=False):
     hthets = data['hthets']
     if rebuild:
         #Can recreate an entire 3D array of mostly 0s
-        image, imx, imy = getData(filepath)
+        image = getData(filepath)
+        imy, imx = image.shape
         ntheta = len(hthets[0])
         xyt = np.zeros((imy, imx, ntheta))
         coords = zip(hi, hj)
@@ -130,23 +132,70 @@ def getXYT(xyt_filename, rebuild=False):
         #Returns the sparse form only
         return hi, hj, hthets
 
-def getData(filepath):
+def getData(filepath, make_mask=False, wlen=WLEN):
     #Reads in and properly rotates images from various sources
     #Supports .fits, .npy, and PIL formats
-    if filepath.endswith('.fits'):
-        hdulist = fits.open(filepath) #Opens HDU list
-        data = hdulist[0].data #Reads all data as an array
-    elif filepath.endswith('.npy'):
-        data = np.load(filepath) #Reads numpy files #TODO
-    else:
-        data = scipy.ndimage.imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
-    
-    data = np.array(data) 
-    y, x = data.shape #Gets dimensions
-    data = np.nan_to_num(data)
-    return data, x, y
+    try:
+        #Reading Data
+        if filepath.endswith('.fits'):
+            #Fits file handling
+            hdu = fits.open(filepath)[0] #Opens first HDU
+            data = hdu.data #Reads all data as an array
 
-def setParams(gassslice, w, s, f, ZEA=False):
+        elif filepath.endswith('.npy'):
+            data = np.load(filepath) #Reads numpy files #TODO
+        
+        else:
+            data = scipy.ndimage.imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords         
+    except:
+        #Failure Reading Data
+        if make_mask:
+            print 'Failure in getData('+filepath+')... Returning None, None'
+            return None, None
+        else:
+            print 'Failure in getData('+filepath+')... Returning None'
+            return None 
+
+    #TODO___________________________________________________________________________clean_data
+    #Sets all non-finite values (NaN or Inf) to the minimum finite value of data
+    #datamin = np.nanmin(data)
+    #clean_data = np.where(np.isfinite(data), data, datamin*np.ones_like(data))
+    
+    #Sets all non-finite values (NaN or Inf) to zero
+    clean_data = np.where(np.isfinite(data), data, np.zeros_like(data))
+
+    if not make_mask:
+        #Done Reading Data, No Mask Needed
+        return clean_data
+    else:
+        #Mask Needed
+        wsquare1 = np.ones((wlen, wlen), np.int_)
+        wkernel = circ_kern(wsquare1, wlen)
+        try:
+            isZEA = filepath.endswith('.fits') and any(['ZEA' in x.upper() for x in [hdu.header['CTYPE1'], hdu.header['CTYPE2']] ])
+        except KeyError:
+            #CTYPE1 or CTYPE2 not found in header keys
+            #Assume file must not be ZEA... Treat as a rectangle
+            isZEA = False
+        finally:
+            if isZEA:
+                #Making Round Mask for ZEA data #TODO header values__________________________________________________
+                mask = makemask(wkernel, data)
+            else:
+                #Mask a Rectangular chunk of a rectangular image!
+                mask = np.zeros_like(data)
+                wcntr = np.floor(wlen/2)
+                datay, datax = data.shape
+                mask[wcntr:datay-wcntr, wcntr:datax-wcntr] = 1 #TODO______________________________ Indexing?
+                y_arr, x_arr = np.nonzero(wkernel)
+                for j,i in zip(np.nonzero(mask)):
+                    x = x_arr - wcntr + i
+                    y = y_arr - wcntr + j
+                    mask[j][i] = np.all( np.isfinite( data[x, y] ) )
+
+            return clean_data, mask 
+
+def setParams(gassslice, w, s, f):
     wlen = float(w)  #Window diameter
     frac = float(f) #Theta-power threshold to store
     smr = float(s) #Smoothing radius
@@ -157,20 +206,14 @@ def setParams(gassslice, w, s, f, ZEA=False):
     ucntr = np.floor(ulen/2)
 
     wcntr = np.floor(wlen/2)
-    ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))  
-
-    
-    dtheta = np.pi/ntheta
-    theta = np.arange(0, np.pi, dtheta)
+    ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0))) 
+    theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)
     
     wsquare1 = np.ones((wlen, wlen), np.int_)
     kernel = circ_kern(wsquare1, smr) 
     wkernel = circ_kern(wsquare1, wlen) 
     
-    if ZEA:
-        mask = makemask(wkernel, gassslice)
-    else:
-        mask = None #Default is no mask
+    mask = None #Default is no mask
 
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
 
@@ -180,12 +223,8 @@ def makemask(wkernel, gassslice):
     # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
     # which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
     # makemask just makes sure that nothing outside that circle is counted as data.
-
-    #gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
-    #gassdata  = pyfits.getdata(gassfile, 0)
-    #gassslice = gassdata[45, :, :]
     
-    datay, datax = np.shape(gassslice)
+    datay, datax = gassslice.shape
     
     mnvals = np.indices((datax,datay))
     pixcrd = np.zeros((datax*datay,2), np.float_)
@@ -200,14 +239,12 @@ def makemask(wkernel, gassslice):
     w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
     
     worldc = w.wcs_pix2world(pixcrd, 1)
-    
     worldcra = worldc[:,0].reshape(datax,datay)
     worldcdec = worldc[:,1].reshape(datax,datay)
     
-    gm = np.zeros(gassslice.shape)
-    #gm[worldcdec < 0] = 1
-    
+    gm = np.zeros_like(gassslice)
     gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
+    
     gg = gmconv.copy() #copy.copy(gmconv)
     gg[gmconv < np.max(gmconv)] = 0
     gg[gmconv == np.max(gmconv)] = 1
@@ -352,23 +389,25 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     hiapp = Hi.append
     hjapp = Hj.append
     npsum = np.sum
-
+    '''
     #Loop: (j,i) are centerpoints of data window.
     datay, datax = data.shape 
-
     #TODO-------------------------------------------------------
     ucntr = int(ucntr) #should already be one
     for j in xrange(ucntr, (datay - ucntr)):         
         update_progress((j-ucntr)/(datay-2.0*ucntr-1.0)) 
         for i in xrange(ucntr, (datax - ucntr)): 
-            '''
+    
+
+
             for j in xrange(datay): 
                 if j >= ucntr and j < (datay - ucntr):        
                     update_progress((j-ucntr)/(datay-2.0*ucntr-1.0)) 
                     for i in xrange(datax): 
                         if i >= ucntr and i < (datax - ucntr):
-            '''
-            ''' 
+    
+            
+     
             start = ucntr
             stopy = (datay-ucntr)
             stopx = (datax-ucntr)
@@ -379,25 +418,28 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
             for j in np.arange(start, stopy, 1):        
                 update_progress((j-start)/(stopy-start-1.0))
                 for i in np.arange(start, stopx, 1):
-            '''
+    
+    
             #TODO-------------------------------------------------------
             if mask is None or (mask is not None and mask[j,i] == 1):
-                try:
-                    wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
-                    h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
-                    hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
-                    hout[hout<0.0] = 0.0
-                    #hout.clip(min=0.0)
-                    #if npsum(hout) > 0:
-                    if any(hout):
-                        htapp(hout)
-                        hiapp(i)
-                        hjapp(j)
-                except:
-                    print 'Failure:', i, j, wcntr
-                    raise
-                #finally:
-                    #pass 
+    '''
+    for j,i in zip(np.nonzero(mask)):
+        try:
+            wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
+            h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
+            hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
+            hout[hout<0.0] = 0.0
+            #hout.clip(min=0.0)
+            #if npsum(hout) > 0:
+            if any(hout):
+                htapp(hout)
+                hiapp(i)
+                hjapp(j)
+        except:
+            print 'Failure:', i, j, wcntr
+            raise
+        #finally:
+            #pass 
 
     return np.array(Hthets), np.array(Hi), np.array(Hj)
 
@@ -430,7 +472,8 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
 
         #print '1/3.. Loading Data'
-        xy_array, datax, datay = getData(filepath)
+        xy_array, mask = getData(filepath, make_mask=True, wlen=wlen)
+        datay, datax = xy_array.shape
         #print '1/3.. Successfully Loaded Data!'
 
         filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
@@ -438,12 +481,7 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
         #print '2/3.. Setting Params'
         #TODO wrap parameter input
-        isZEA = False
-        if filepath.endswith('.fits'): 
-            hdu = fits.open(filepath)[0]
-            headers = hdu.header['CTYPE1'] + hdu.header['CTYPE2'] 
-            isZEA = any(['ZEA' in x.upper() for x in headers]) #TODO__More possibilities
-        wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, wlen, smr, frac, isZEA)
+        wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, bad_mask = setParams(xy_array, wlen, smr, frac)
         #print '2/3.. Successfully Set Params!'
         print '2/3:: Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
 
@@ -457,6 +495,7 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         print '3/3:: Successfully Saved Data As', xyt_filename
         return True
     except:
+        raise #___________________________________________________________________________
         return False
 
 
@@ -503,7 +542,8 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     np.save(spectrum_filename, np.array(spectrum))
 
     #Backprojection only *Full Size* #Requires image
-    image, imx, imy = getData(filepath)
+    image = getData(filepath)
+    imy, imx = image.shape
     backproj = np.zeros_like(image)
     coords = zip(hi, hj)
     for c in range(len(coords)):
@@ -534,7 +574,8 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     return: Boolean, if the function succeeded
     '''
     #Loads in relevant files
-    image, imx, imy = getData(filepath)
+    image = getData(filepath)
+    imy, imx = image.shape
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
