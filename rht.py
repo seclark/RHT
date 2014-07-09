@@ -184,7 +184,7 @@ def getData(filepath, make_mask=False, wlen=WLEN):
             else:
                 #Mask a Rectangular chunk of a rectangular image!
                 mask = np.zeros_like(data)
-                wcntr = np.floor(wlen/2)
+                wcntr = int(np.floor(wlen/2)) #TODO______________________________ Indexing?
                 datay, datax = data.shape
                 mask[wcntr:datay-wcntr, wcntr:datax-wcntr] = 1 #TODO______________________________ Indexing?
                 #Mask any pixel within wcntr of a NaN pixel
@@ -192,7 +192,8 @@ def getData(filepath, make_mask=False, wlen=WLEN):
                 for (j,i) in zip(*np.nonzero(mask)):
                     x = x_arr - wcntr + i
                     y = y_arr - wcntr + j
-                    mask[j][i] = np.isfinite( data[x.astype(np.int), y.astype(np.int)] ).all()
+                    a =  np.isfinite( data[y.astype(np.int), x.astype(np.int)] ).all()
+                    mask[j][i] = a
 
             return clean_data, mask 
 
@@ -220,14 +221,14 @@ def setParams(w, s, f):
 
 
 
-def makemask(wkernel, gassslice):
+def makemask(wkernel, data):
     # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
     # which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
     # makemask just makes sure that nothing outside that circle is counted as data.
     
-    datay, datax = gassslice.shape
+    datay, datax = data.shape
     
-    mnvals = np.indices((datax,datay))
+    mnvals = np.indices(data.shape)
     pixcrd = np.zeros((datax*datay,2), np.float_)
     pixcrd[:,0] = mnvals[:,:][0].reshape(datax*datay)
     pixcrd[:,1] = mnvals[:,:][1].reshape(datax*datay)
@@ -240,10 +241,10 @@ def makemask(wkernel, gassslice):
     w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
     
     worldc = w.wcs_pix2world(pixcrd, 1)
-    worldcra = worldc[:,0].reshape(datax,datay)
-    worldcdec = worldc[:,1].reshape(datax,datay)
+    worldcra = worldc[:,0].reshape(*data.shape)
+    worldcdec = worldc[:,1].reshape(*data.shape)
     
-    gm = np.zeros_like(gassslice)
+    gm = np.zeros_like(data)
     gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
     
     gg = gmconv.copy() #copy.copy(gmconv)
@@ -257,7 +258,7 @@ def makemask(wkernel, gassslice):
 #Outkernel is 0 anywhere outside the window.    
 def circ_kern(inkernel, radius):
     #These are all the possible (m,n) indices in the image space, centered on center pixel
-    mnvals = np.indices((len(inkernel), len(inkernel)))
+    mnvals = np.indices(inkernel.shape)
     kcntr = np.floor(len(inkernel)/2.0)
     mvals = mnvals[:,:][0] - kcntr
     nvals = mnvals[:,:][1] - kcntr
@@ -427,7 +428,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     coords = zip(*np.nonzero(mask))
     for c in range(len(coords)):
         j,i = coords[c]
-        update_progress(c/(len(coords)-1))
+        update_progress(c/(len(coords)-1), '3/4::')
         try:
             wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
             h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
@@ -465,36 +466,31 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     if not is_valid_file(filepath):
         #Checks to see if a file should have the rht applied to it...
+        print 'Invalid filepath in rht('+filepath+')...'
         return False
 
     try:
-        if not force:
-            #TODO CHECK WHETHER AN OUTPUT EXISTS WITH THIS PARAMETER INPUT FIRST!! ______________________________________________
-            pass
-
-
-        #print '1/3.. Loading Data'
-        xy_array, mask = getData(filepath, make_mask=True, wlen=wlen)
-        datay, datax = xy_array.shape
-        #print '1/3.. Successfully Loaded Data!'
-
         filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-        print '1/3:: Analyzing', filename, str(datax)+'x'+str(datay)
-
-        #print '2/3.. Setting Params'
-        #TODO wrap parameter input
-        wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, bad_mask = setParams(wlen, smr, frac)
-        #print '2/3.. Successfully Set Params!'
-        print '2/3:: Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
-
-        #print '3/3.. Runnigh Hough Transform'
-        hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) #TODO theta, ntheta, mask
-        
         output='.'
         xyt_filename = os.path.join(output, filename + '_xyt.npz')
+
+        if not force and os.path.isfile(xyt_filename):
+            return True
+            #TODO CHECK WHETHER AN OUTPUT EXISTS WITH THIS PARAMETER INPUT FIRST!! ______________________________________________
+
+        xy_array, mask = getData(filepath, make_mask=True, wlen=wlen)
+        datay, datax = xy_array.shape
+        print '1/4:: Analyzing', filename, str(datax)+'x'+str(datay)
+
+        #TODO wrap parameter input
+        wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, bad_mask = setParams(wlen, smr, frac)
+        print '2/4:: Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
+
+        hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) #TODO theta, ntheta, mask
+        
         putXYT(xyt_filename, hi, hj, hthets)
 
-        print '3/3:: Successfully Saved Data As', xyt_filename
+        print '4/4:: Successfully Saved Data As', xyt_filename
         return True
     except:
         raise #___________________________________________________________________________
@@ -599,15 +595,18 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     print 'Backprojection'
     #contour(np.load(backproj_filename))
     plt.subplot(121)
-    plt.imshow(image, cmap='gray')
+    c = 0.1
+    a = np.log(np.abs(np.where(np.logical_and(image, np.isfinite(image)), image, c*np.ones_like(image)))) 
+    plt.imshow(a, cmap='gray')
     plt.ylim(0, imy)
     plt.title(filepath)
     plt.subplot(122)
-    plt.imshow(np.load(backproj_filename), cmap='gray')
+    plt.imshow(np.load(backproj_filename), cmap='binary')
     plt.ylim(0, imy)
     plt.title(backproj_filename)
     plt.show()
     #___________________________________TODO SAVE PLOT
+    del a, c
     plt.clf()
     plt.cla()
     plt.close()
@@ -691,9 +690,9 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
         success = True
         try:
             if (display):
-                success = viewer(path, force=True, wlen=wlen, frac=frac, smr=smr)
+                success = viewer(path, force=force, wlen=wlen, frac=frac, smr=smr)
             else:
-                success = rht(path, wlen=wlen, frac=frac, smr=smr)
+                success = rht(path, force=force, wlen=wlen, frac=frac, smr=smr)
         except:
             success = False
             raise #____________________________________________________________________________________________________________________HANG??
