@@ -173,7 +173,7 @@ def getData(filepath, make_mask=False, wlen=WLEN):
         wkernel = circ_kern(wsquare1, wlen)
         try:
             isZEA = filepath.endswith('.fits') and any(['ZEA' in x.upper() for x in [hdu.header['CTYPE1'], hdu.header['CTYPE2']] ])
-        except KeyError:
+        except:
             #CTYPE1 or CTYPE2 not found in header keys
             #Assume file must not be ZEA... Treat as a rectangle
             isZEA = False
@@ -187,15 +187,16 @@ def getData(filepath, make_mask=False, wlen=WLEN):
                 wcntr = np.floor(wlen/2)
                 datay, datax = data.shape
                 mask[wcntr:datay-wcntr, wcntr:datax-wcntr] = 1 #TODO______________________________ Indexing?
+                #Mask any pixel within wcntr of a NaN pixel
                 y_arr, x_arr = np.nonzero(wkernel)
-                for j,i in zip(np.nonzero(mask)):
+                for (j,i) in zip(*np.nonzero(mask)):
                     x = x_arr - wcntr + i
                     y = y_arr - wcntr + j
-                    mask[j][i] = np.all( np.isfinite( data[x, y] ) )
+                    mask[j][i] = np.isfinite( data[x.astype(np.int), y.astype(np.int)] ).all()
 
             return clean_data, mask 
 
-def setParams(gassslice, w, s, f):
+def setParams(w, s, f):
     wlen = float(w)  #Window diameter
     frac = float(f) #Theta-power threshold to store
     smr = float(s) #Smoothing radius
@@ -423,14 +424,15 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
             #TODO-------------------------------------------------------
             if mask is None or (mask is not None and mask[j,i] == 1):
     '''
-    for j,i in zip(np.nonzero(mask)):
+    coords = zip(*np.nonzero(mask))
+    for c in range(len(coords)):
+        j,i = coords[c]
+        update_progress(c/(len(coords)-1))
         try:
             wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
             h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
             hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
             hout[hout<0.0] = 0.0
-            #hout.clip(min=0.0)
-            #if npsum(hout) > 0:
             if any(hout):
                 htapp(hout)
                 hiapp(i)
@@ -481,12 +483,12 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
         #print '2/3.. Setting Params'
         #TODO wrap parameter input
-        wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, bad_mask = setParams(xy_array, wlen, smr, frac)
+        wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, bad_mask = setParams(wlen, smr, frac)
         #print '2/3.. Successfully Set Params!'
         print '2/3:: Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
 
         #print '3/3.. Runnigh Hough Transform'
-        hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)
+        hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask) #TODO theta, ntheta, mask
         
         output='.'
         xyt_filename = os.path.join(output, filename + '_xyt.npz')
@@ -694,6 +696,7 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
                 success = rht(path, wlen=wlen, frac=frac, smr=smr)
         except:
             success = False
+            raise #____________________________________________________________________________________________________________________HANG??
         finally:
             if success:
                 summary.append(path+': Passed')
