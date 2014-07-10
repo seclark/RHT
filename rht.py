@@ -133,7 +133,7 @@ def getXYT(xyt_filename, rebuild=False):
         return hi, hj, hthets
 
 def getData(filepath, make_mask=False, wlen=WLEN):
-    #Reads in and properly rotates images from various sources
+    #Reads in and makes proper masks for images from various sources
     #Supports .fits, .npy, and PIL formats
     try:
         #Reading Data
@@ -169,7 +169,7 @@ def getData(filepath, make_mask=False, wlen=WLEN):
         return clean_data
     else:
         #Mask Needed
-        wsquare1 = np.ones((wlen, wlen), np.int_)
+        wsquare1 = np.ones((wlen, wlen), np.int_) #TODO ____________INCLUDE SMR HERE
         wkernel = circ_kern(wsquare1, wlen)
         try:
             isZEA = filepath.endswith('.fits') and any(['ZEA' in x.upper() for x in [hdu.header['CTYPE1'], hdu.header['CTYPE2']] ])
@@ -379,7 +379,7 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 
     #unsharp mask the whole data set
     udata = umask(data, kernel)
-    
+
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(wkernel, xyt, ntheta) #Length ntheta array
     dcube = np.repeat(udata[:,:,np.newaxis], repeats=ntheta, axis=2)
@@ -572,7 +572,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     return: Boolean, if the function succeeded
     '''
     #Loads in relevant files
-    image = getData(filepath)
+    image, mask = getData(filepath, make_mask=True, wlen=wlen)
     imy, imx = image.shape
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
     backproj_filename = filename + '_backproj.npy'
@@ -592,6 +592,41 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
             #Good to go! No interpretation needed!
             pass 
     
+    def cleanup(all=False):
+        plt.clf()
+        plt.cla()
+        if all:
+            plt.close('all')
+        else:
+            plt.close()
+
+    print 'Whole Figure'
+    fig, axes = plt.subplots(nrows=2, ncols=2)
+    c = 0.1
+    a = np.log(np.abs(np.where(mask, image, c*np.ones_like(image)))) 
+    axes[0][0].imshow(a, cmap='gray')
+    axes[0][0].set_ylim([0, imy])
+    axes[0][0].set_title(filepath)
+
+    axes[1][1].imshow(np.load(backproj_filename), cmap='gray') #cmap='binary')
+    axes[1][1].set_ylim([0, imy])
+    axes[1][1].set_title(backproj_filename)
+
+    axes[1][0].imshow(mask, cmap='gray') #cmap='binary')
+    axes[1][0].set_ylim([0, imy])
+    axes[1][0].set_title('Mask')
+
+    udata = umask(image, circ_kern(np.ones((wlen, wlen), np.int_), smr))
+    axes[0][1].imshow(udata, cmap='gray') #cmap='binary')
+    axes[0][1].set_ylim([0, imy])
+    axes[0][1].set_title('Sharpened')
+
+    plt.show(fig)
+    #___________________________________TODO SAVE PLOT
+    del a, c, udata
+    cleanup()
+
+    '''
     print 'Backprojection'
     #contour(np.load(backproj_filename))
     plt.subplot(121)
@@ -607,9 +642,8 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     plt.show()
     #___________________________________TODO SAVE PLOT
     del a, c
-    plt.clf()
-    plt.cla()
-    plt.close()
+    cleanup()
+    '''
 
     print 'Theta Spectrum'
     spectrum = np.load(spectrum_filename)
@@ -617,9 +651,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     plt.plot(np.linspace(0.0, 180.0, num=ntheta, endpoint=False), spectrum)
     #___________________________________TODO SAVE PLOT
     plt.show()
-    plt.clf()
-    plt.cla()
-    plt.close()
+    cleanup()
 
     #Polar plot of theta power
     print 'Linearity'
@@ -627,14 +659,10 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     t = np.linspace(0.0, 2*np.pi, num=len(r), endpoint=False)
     plt.polar(t, r)
     plt.show()
-    plt.clf()
-    plt.cla()
-    plt.close()
+    cleanup()
 
     #Clear all and exit successfully
-    plt.clf()
-    plt.cla()
-    plt.close('all')
+    cleanup(all=True)
     return True
 
 
