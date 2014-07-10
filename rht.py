@@ -87,21 +87,21 @@ def announce(strings):
 
 def update_progress(progress, message='Progress:'):
     #Create progress meter
-    if progress > 0.0 and progress <= 1.0:
-        p = int((TEXTWIDTH//2+2)*progress/1.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2+2)-p), message))
+    length = TEXTWIDTH//2
+    messlen = TEXTWIDTH-(length+4)
+    message = string.ljust(message, messlen)[:messlen]
+    if 0.0 <= progress <= 1.0:
+        p = int(length*progress/1.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(length-p), message))
         sys.stdout.flush()
-        if p == (TEXTWIDTH//2+2):
+        if p == length:
             print ''
-    elif progress > 0.0 and progress <= 100.0:
-        p = int((TEXTWIDTH//2+2)*progress/100.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2+2)-p), message)) 
+    elif 0.0 <= progress <= 100.0:
+        p = int(length*progress/100.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(length-p), message)) 
         sys.stdout.flush()
-        if p == (TEXTWIDTH//2+2):
+        if p == length:
             print ''
-    elif progress == 0.0:
-        sys.stdout.write('\r{1} [{0}]%'.format(' '*(TEXTWIDTH//2+2), message))
-        sys.stdout.flush()
     else:
         pass ##TODO Progress Bar Failure
 
@@ -135,6 +135,7 @@ def getXYT(xyt_filename, rebuild=False):
 def getData(filepath, make_mask=False, wlen=WLEN):
     #Reads in and makes proper masks for images from various sources
     #Supports .fits, .npy, and PIL formats
+    print 'Retrieving Data'
     try:
         #Reading Data
         if filepath.endswith('.fits'):
@@ -169,6 +170,7 @@ def getData(filepath, make_mask=False, wlen=WLEN):
         return clean_data
     else:
         #Mask Needed
+        update_progress(0.0, message='Masking::')
         wsquare1 = np.ones((wlen, wlen), np.int_) #TODO ____________INCLUDE SMR HERE
         wkernel = circ_kern(wsquare1, wlen)
         try:
@@ -180,7 +182,38 @@ def getData(filepath, make_mask=False, wlen=WLEN):
         finally:
             if isZEA:
                 #Making Round Mask for ZEA data #TODO header values__________________________________________________
-                mask = makemask(wkernel, data)
+                #mask = makemask(wkernel, data)
+                # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
+                # which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
+                # makemask just makes sure that nothing outside that circle is counted as data.
+                
+                datay, datax = data.shape
+                
+                mnvals = np.indices(data.shape)
+                pixcrd = np.zeros((datax*datay,2), np.float_)
+                pixcrd[:,0] = mnvals[:,:][0].reshape(datax*datay)
+                pixcrd[:,1] = mnvals[:,:][1].reshape(datax*datay)
+                
+                w = wcs.WCS(naxis=2)
+                #TODO READ FROM FITS HEADER FILE!
+                w.wcs.crpix = [1.125000000E3, 1.125000000E3]
+                w.wcs.cdelt = np.array([-8.00000000E-2, 8.00000000E-2])
+                w.wcs.crval = [0.00000000E0, -9.00000000E1]
+                w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
+                
+                worldc = w.wcs_pix2world(pixcrd, 1)
+                worldcra = worldc[:,0].reshape(*data.shape)
+                worldcdec = worldc[:,1].reshape(*data.shape)
+                
+                gm = np.zeros_like(data)
+                gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
+                
+                gg = gmconv.copy() #copy.copy(gmconv)
+                gg[gmconv < np.max(gmconv)] = 0
+                gg[gmconv == np.max(gmconv)] = 1
+                
+                mask = gg
+
             else:
                 #Mask a Rectangular chunk of a rectangular image!
                 mask = np.zeros_like(data)
@@ -189,11 +222,18 @@ def getData(filepath, make_mask=False, wlen=WLEN):
                 mask[wcntr:datay-wcntr, wcntr:datax-wcntr] = 1 #TODO______________________________ Indexing?
                 #Mask any pixel within wcntr of a NaN pixel
                 y_arr, x_arr = np.nonzero(wkernel)
+                '''
                 for (j,i) in zip(*np.nonzero(mask)):
+                '''
+                coords = zip(*np.nonzero(mask))
+                for c in range(len(coords)):
+                    j,i = coords[c]
+
                     x = x_arr - wcntr + i
                     y = y_arr - wcntr + j
                     a =  np.isfinite( data[y.astype(np.int), x.astype(np.int)] ).all()
                     mask[j][i] = a
+                    update_progress(c/(len(coords)-1), message='Masking::')
 
             return clean_data, mask 
 
