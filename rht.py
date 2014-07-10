@@ -23,7 +23,7 @@ import string
 TEXTWIDTH = 60 #Width of some displayed text objects
 WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.75 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
-SMR = 5 #11.0 #smoothing radius of unsharp mask function
+SMR = 11.0 #smoothing radius of unsharp mask function
 # ulen : length of unsharp mask square. Must be at least wlen + smr/2
 
 #-----------------------------------------------------------------------------------------
@@ -181,12 +181,7 @@ def getData(filepath, make_mask=False, wlen=WLEN):
             isZEA = False
         finally:
             if isZEA:
-                #Making Round Mask for ZEA data #TODO header values__________________________________________________
-                #mask = makemask(wkernel, data)
-                # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
-                # which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
-                # makemask just makes sure that nothing outside that circle is counted as data.
-                
+                #Making Round Mask for ZEA data 
                 datay, datax = data.shape
                 
                 mnvals = np.indices(data.shape)
@@ -194,13 +189,16 @@ def getData(filepath, make_mask=False, wlen=WLEN):
                 pixcrd[:,0] = mnvals[:,:][0].reshape(datax*datay)
                 pixcrd[:,1] = mnvals[:,:][1].reshape(datax*datay)
                 
+                #TODO READ FROM FITS HEADER FILE!_________________
+                w = wcs.WCS(hdu.header)
+                '''
                 w = wcs.WCS(naxis=2)
-                #TODO READ FROM FITS HEADER FILE!
-                w.wcs.crpix = [1.125000000E3, 1.125000000E3]
-                w.wcs.cdelt = np.array([-8.00000000E-2, 8.00000000E-2])
-                w.wcs.crval = [0.00000000E0, -9.00000000E1]
-                w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
-                
+                w.wcs.crpix = [hdu.header['CRPIX1'], hdu.header['CRPIX2']] #[1.125000000E3, 1.125000000E3]
+                w.wcs.cdelt = [hdu.header['CD1_1'], hdu.header['CD2_2']] #np.array([-8.00000000E-2, 8.00000000E-2])_____________
+                w.wcs.crval = [hdu.header['CRVAL1'], hdu.header['CRVAL2']]#[0.00000000E0, -9.00000000E1]
+                w.wcs.ctype = [hdu.header['CTYPE1'], hdu.header['CTYPE2']] #['RA---ZEA', 'DEC--ZEA']
+                '''
+
                 worldc = w.wcs_pix2world(pixcrd, 1)
                 worldcra = worldc[:,0].reshape(*data.shape)
                 worldcdec = worldc[:,1].reshape(*data.shape)
@@ -222,13 +220,9 @@ def getData(filepath, make_mask=False, wlen=WLEN):
                 mask[wcntr:datay-wcntr, wcntr:datax-wcntr] = 1 #TODO______________________________ Indexing?
                 #Mask any pixel within wcntr of a NaN pixel
                 y_arr, x_arr = np.nonzero(wkernel)
-                '''
-                for (j,i) in zip(*np.nonzero(mask)):
-                '''
                 coords = zip(*np.nonzero(mask))
                 for c in range(len(coords)):
                     j,i = coords[c]
-
                     x = x_arr - wcntr + i
                     y = y_arr - wcntr + j
                     a =  np.isfinite( data[y.astype(np.int), x.astype(np.int)] ).all()
@@ -258,41 +252,6 @@ def setParams(w, s, f):
     mask = None #Default is no mask
 
     return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
-
-
-
-def makemask(wkernel, data):
-    # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
-    # which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
-    # makemask just makes sure that nothing outside that circle is counted as data.
-    
-    datay, datax = data.shape
-    
-    mnvals = np.indices(data.shape)
-    pixcrd = np.zeros((datax*datay,2), np.float_)
-    pixcrd[:,0] = mnvals[:,:][0].reshape(datax*datay)
-    pixcrd[:,1] = mnvals[:,:][1].reshape(datax*datay)
-    
-    w = wcs.WCS(naxis=2)
-    #TODO READ FROM FITS HEADER FILE!
-    w.wcs.crpix = [1.125000000E3, 1.125000000E3]
-    w.wcs.cdelt = np.array([-8.00000000E-2, 8.00000000E-2])
-    w.wcs.crval = [0.00000000E0, -9.00000000E1]
-    w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
-    
-    worldc = w.wcs_pix2world(pixcrd, 1)
-    worldcra = worldc[:,0].reshape(*data.shape)
-    worldcdec = worldc[:,1].reshape(*data.shape)
-    
-    gm = np.zeros_like(data)
-    gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
-    
-    gg = gmconv.copy() #copy.copy(gmconv)
-    gg[gmconv < np.max(gmconv)] = 0
-    gg[gmconv == np.max(gmconv)] = 1
-    
-    return gg
-
 
 #Performs a circle-cut of given radius on inkernel.
 #Outkernel is 0 anywhere outside the window.    
@@ -665,8 +624,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     #___________________________________TODO SAVE PLOT
     del a, c, udata
     cleanup()
-
-    '''
+    
     print 'Backprojection'
     #contour(np.load(backproj_filename))
     plt.subplot(121)
@@ -683,8 +641,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     #___________________________________TODO SAVE PLOT
     del a, c
     cleanup()
-    '''
-
+    
     print 'Theta Spectrum'
     spectrum = np.load(spectrum_filename)
     ntheta = len(spectrum)
@@ -718,14 +675,13 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
 
     return: Boolean, if the function succeeded
     '''
-    #Ensure that the input is a non-None string
-    while source is None or type(source) != str: #TODO Fix escape char bug
+    #Ensure that the input is a non-None, non-Empty string
+    while source is None or type(source) != str or len(source)==0:
         try:
-            source = raw_input('Please enter the name of a file or directory to transform:')
+            source = raw_input('Source:')
         except:
             source = None
     
-    #______________________________________________________________________________CLEANS SOURCE
     #Interpret whether the Input is a file or directory, excluding all else
     pathlist = []
     if os.path.isfile(source):
