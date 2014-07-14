@@ -35,40 +35,6 @@ SMR = 11.0 #smoothing radius of unsharp mask function
 #-----------------------------------------------------------------------------------------
 #Utility Functions
 #-----------------------------------------------------------------------------------------
-def is_valid_file(filepath):
-    '''
-    filepath: Potentially a string path to a source image
-
-    return: Boolean, True ONLY when the image could have rht() applied successfully
-    '''
-    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy'] #TODO___More Endings
-    if any([filepath.endswith(e) for e in excluded_file_endings]):
-        return False
-    
-    excluded_file_content = ['_xyt', '_backproj', '_spectrum'] #TODO___More Exclusions
-    if any([e in filepath for e in excluded_file_content]):
-        return False
-
-    return True
-
-def center(filepath, shape=(500, 500)):
-    #Returns a cutout from the center of the image
-    data = getData(filepath)
-    datay, datax = data.shape 
-    x, y = shape
-    if 0 < x < datax and 0 < y < datay:
-        left = int(datax//2-x//2)
-        right = int(datax//2+x//2)
-        up = int(datay//2+y//2)
-        down = int(datay//2-y//2)
-        cutout = np.array(data[down:up, left:right])
-        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-        center_filename = filename+'_center.npy'
-        np.save(center_filename, cutout)
-        return center_filename
-    else:
-        return None 
-
 def announcement(strings):
     result = ''
     if type(strings) == list:
@@ -103,6 +69,43 @@ def update_progress(progress, message='Progress:'):
             print ''
     else:
         pass ##TODO Progress Bar Failure
+
+#-----------------------------------------------------------------------------------------
+#Image Processing Functions
+#-----------------------------------------------------------------------------------------
+def is_valid_file(filepath):
+    '''
+    filepath: Potentially a string path to a source image
+
+    return: Boolean, True ONLY when the image could have rht() applied successfully
+    '''
+    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy'] #TODO___More Endings
+    if any([filepath.endswith(e) for e in excluded_file_endings]):
+        return False
+    
+    excluded_file_content = ['_xyt', '_backproj', '_spectrum'] #TODO___More Exclusions
+    if any([e in filepath for e in excluded_file_content]):
+        return False
+
+    return True
+
+def center(filepath, shape=(500, 500)):
+    #Returns a cutout from the center of the image
+    data = getData(filepath)
+    datay, datax = data.shape 
+    x, y = shape
+    if 0 < x < datax and 0 < y < datay:
+        left = int(datax//2-x//2)
+        right = int(datax//2+x//2)
+        up = int(datay//2+y//2)
+        down = int(datay//2-y//2)
+        cutout = np.array(data[down:up, left:right])
+        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+        center_filename = filename+'_center.npy'
+        np.save(center_filename, cutout)
+        return center_filename
+    else:
+        return None 
 
 def putXYT(xyt_filename, hi, hj, hthets, compressed=True):
     if compressed:
@@ -169,12 +172,11 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
     
     if not make_mask:
         #Done Reading Data, No Mask Needed
-        #return clean_data
         return data
-    #TODO___________________________________________________________________________
-
     
     #Mask Needed
+
+    '''
     try:
         isZEA = filepath.endswith('.fits') and any(['ZEA' in x.upper() for x in [hdu.header['CTYPE1'], hdu.header['CTYPE2']] ])
     except:
@@ -183,6 +185,13 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
         isZEA = False
 
     if isZEA:
+        #data = np.where(np.isfinite(data), data, np.zeros_like(data))
+        #plt.contour(data)
+        #plt.show()
+        #plt.imshow(data)
+        #plt.show()
+        #exit()
+
         #Making Round Mask for ZEA data 
         datay, datax = data.shape
         mnvals = np.indices(data.shape)
@@ -192,21 +201,25 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
 
         #Use astropy.wcs module to transform coords
         w = wcs.WCS(hdu.header) #TODO verify accuracy of this_______________________________________________________
-        '''
-        w = wcs.WCS(naxis=2)
-        w.wcs.crpix = [hdu.header['CRPIX1'], hdu.header['CRPIX2']] #[1.125000000E3, 1.125000000E3]
-        w.wcs.cdelt = [hdu.header['CD1_1'], hdu.header['CD2_2']] #np.array([-8.00000000E-2, 8.00000000E-2])
-        w.wcs.crval = [hdu.header['CRVAL1'], hdu.header['CRVAL2']]#[0.00000000E0, -9.00000000E1]
-        w.wcs.ctype = [hdu.header['CTYPE1'], hdu.header['CTYPE2']] #['RA---ZEA', 'DEC--ZEA']
-        '''
+        #w = wcs.WCS(naxis=2)
+        #w.wcs.crpix = [hdu.header['CRPIX1'], hdu.header['CRPIX2']] #[1.125000000E3, 1.125000000E3]
+        #w.wcs.cdelt = [hdu.header['CD1_1'], hdu.header['CD2_2']] #np.array([-8.00000000E-2, 8.00000000E-2])
+        #w.wcs.crval = [hdu.header['CRVAL1'], hdu.header['CRVAL2']]#[0.00000000E0, -9.00000000E1]
+        #w.wcs.ctype = [hdu.header['CTYPE1'], hdu.header['CTYPE2']] #['RA---ZEA', 'DEC--ZEA']
+        
         worldc = w.wcs_pix2world(pixcrd, 1)
         worldcra = worldc[:,0].reshape(*data.shape) 
         worldcdec = worldc[:,1].reshape(*data.shape)
+        #plt.contour(worldcra)
+        #plt.show()
+        #plt.contour(worldcdec)
+        #plt.show()
         
         #Mask at both diameters: 2*smr and wlen
         gm = np.zeros_like(data)
-        wsquare1 = np.ones((2*smr, 2*smr), np.int_) 
+        wsquare1 = np.ones((2*smr, 2*smr), np.int) 
         wkernel = circ_kern(wsquare1, 2*smr)
+        gm[worldcdec < 0] = 1
         gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
         gg = gmconv.copy()
         gg[gmconv < np.max(gmconv)] = 0
@@ -214,16 +227,18 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
         smr_mask = gg
 
         gm = np.zeros_like(data)
-        wsquare1 = np.ones((wlen, wlen), np.int_) 
+        wsquare1 = np.ones((wlen, wlen), np.int) 
         wkernel = circ_kern(wsquare1, wlen)
         gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
+        gm[worldcdec < 0] = 1
         gg = gmconv.copy()
         gg[gmconv < np.max(gmconv)] = 0
         gg[gmconv == np.max(gmconv)] = 1
         wlen_mask = gg
 
         #TODO___ TRANSFORM GOES UNUSED???______________________________________________________________________________
-        return data, smr_mask, wlen_mask
+        #return data, smr_mask, wlen_mask
+    '''
 
     def bad_pixels(data):
         #Returns an array of the same shape as data
@@ -245,7 +260,7 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
         circle = circ_kern(square, diameter)
         y_arr, x_arr = np.nonzero(circle)
 
-        #IMPLEMENTATION: Zero any mask pixel within r of a bad pixel
+        #IMPLEMENTATION1: Zero any mask pixel within r of a bad pixel
         coords = zip(*np.nonzero(bad_pixels(data)))
         for c in range(len(coords)):
             j,i = coords[c]
@@ -253,7 +268,7 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
             y = (y_arr - r + j).astype(np.int)
             mask[y, x] = 0
         '''
-        #IMPLEMENTATION: For each good pixel, 'Not Any Bad pixels near me'
+        #IMPLEMENTATION2: For each good pixel, 'Not Any Bad pixels near me'
         coords = zip(*np.nonzero(mask))
         for c in range(len(coords)):
             j,i = coords[c]
@@ -263,9 +278,14 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
         '''
         return mask 
 
-    #Mask a Rectangular chunk of a rectangular image!
+    #Mask a Rectangular chunk of a rectangular image! #TODO________________________________________May Not be right?
     smr_mask = all_within_diameter_are_good(data, 2*smr)
-    wlen_mask = all_within_diameter_are_good(data, wlen)
+    #wlen_mask = all_within_diameter_are_good(data, wlen) 
+
+    nans = np.empty(smr_mask.shape, dtype=np.int)
+    nans.fill(np.nan)
+    data = np.where(smr_mask, data, nans)
+    wlen_mask = all_within_diameter_are_good(smr_mask, wlen)
 
     return data, smr_mask, wlen_mask
 
@@ -279,10 +299,8 @@ def circ_kern(inkernel, diameter):
     nvals = mnvals[:,:][1] - kcntr
 
     rads = np.sqrt(nvals**2 + mvals**2)
-    outkernel = inkernel.copy() #copy.copy(inkernel)
-    outkernel[rads > diameter/2] = 0
     
-    return outkernel
+    return np.greater(rads, diameter/2)
 
 #Unsharp mask. Returns binary data.
 def umask(data, radius, smr_mask=None):
@@ -297,15 +315,15 @@ def umask(data, radius, smr_mask=None):
     subtr_data = data - outdata/kernweight
     
     #Convert to binary data
-    bindata = subtr_data.copy()
-    bindata[subtr_data > 0] = 1
-    bindata[subtr_data <= 0] = 0
+    bindata = np.greater(subtr_data, 0)
 
     if smr_mask == None:
         return bindata
     else:
-        return np.where(smr_mask, bindata, np.zeros_like(bindata))
-
+        #nans = np.empty(bindata.shape, dtype=np.int)
+        #nans.fill(np.nan)
+        #return np.where(smr_mask, bindata, nans) #TODO________________________________________May Not be right?
+        return np.where(smr_mask, bindata, np.zeros_like(bindata)) 
 
 def fast_hough(in_arr, xyt, ntheta):
     incube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)
@@ -318,7 +336,7 @@ def all_thetas(window, thetbins):
     ntheta = len(thetbins) #Parse height in theta
     
     #Makes prism; output has dimensions (x, y, theta)
-    out = np.zeros((wy, wx, ntheta), np.int_)
+    out = np.zeros((wy, wx, ntheta), np.int)
     
     for i in xrange(wx):
         for j in xrange(wy):
@@ -391,11 +409,11 @@ def houghnew(img, theta=None, idl=False):
 
 
 def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask): 
-    update_progress(0.0)
+    update_progress(0.0, '3/4::')
     wcntr = int(np.floor(wlen/2))
 
     #Circular kernels
-    wsquare1 = np.ones((wlen, wlen), np.int_) #Square of 1s
+    wsquare1 = np.ones((wlen, wlen), np.int) #Square of 1s
     wkernel = circ_kern(wsquare1, wlen) #And an wlen-sized circle
     xyt = all_thetas(wkernel, theta) #Cylinder of all theta values per point
 
@@ -414,15 +432,20 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask):
     hjapp = Hj.append
     npsum = np.sum
 
-    coords = zip(*np.nonzero(wlen_mask))
+    coords = zip( *np.nonzero( np.logical_and( wlen_mask, smr_mask )))
     for c in range(len(coords)):
         j,i = coords[c]
         update_progress(c/(len(coords)-1), '3/4::')
         try:
             wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
             h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
-            hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
-            hout[hout<0.0] = 0.0
+            #________________________________________
+            #hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
+            #hout[hout<0.0] = 0.0
+            #_____________________________________________________________________________________________TODO
+            hout = np.divide(h, h1) #np.true_divide(h, h1)
+            hout *= np.greater_equal(hout, frac)
+            #________________________________________
             if any(hout):
                 htapp(hout)
                 hiapp(i)
@@ -471,7 +494,7 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
         datay, datax = data.shape
 
-        print '2/4::', 'Image:', str(datax)+'x'+str(datay), 'Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
+        print '2/4::', 'Size:', str(datax)+'x'+str(datay), 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)
         
         ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0))) #TODO_______________ntheta
         theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
@@ -581,6 +604,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     #Loads in relevant files
     image, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
     imy, imx = image.shape
+    backproj = np.load(backproj_filename)
     
     def cleanup(all=False):
         plt.clf()
@@ -592,20 +616,19 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     print 'Whole Figure'
     fig, axes = plt.subplots(nrows=2, ncols=2)
-    c = 0.1
-    a=image
-    #a = np.log(np.abs(np.where(mask, image, c*np.ones_like(image)))) 
-    axes[0][0].imshow(a, cmap='gray')
+    log = np.abs( np.log( np.where( np.isfinite(image), image, np.ones_like( image)))) 
+    axes[0][0].imshow(log, cmap='gray')
     axes[0][0].set_ylim([0, imy])
     axes[0][0].set_title(filepath)
 
-    axes[1][1].imshow(np.load(backproj_filename), cmap='gray') #cmap='binary')
+    back = np.where(wlen_mask, backproj, np.zeros_like(wlen_mask))
+    axes[1][1].imshow(back, cmap='gray') #cmap='binary')
     axes[1][1].set_ylim([0, imy])
     axes[1][1].set_title(backproj_filename)
 
-    axes[1][0].imshow(np.logical_and(smr_mask, wlen_mask), cmap='gray') #cmap='binary')
-    axes[1][0].set_ylim([0, imy])
-    axes[1][0].set_title('Mask')
+    #axes[1][0].imshow(np.logical_and(smr_mask, wlen_mask), cmap='gray') #cmap='binary')
+    #axes[1][0].set_ylim([0, imy])
+    #axes[1][0].set_title('Mask')
 
     masked_udata = umask(image, smr, smr_mask=smr_mask)
     axes[0][1].imshow(masked_udata, cmap='gray') #cmap='binary')
@@ -614,24 +637,23 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     plt.show(fig)
     #___________________________________TODO SAVE PLOT
-    del a, c, masked_udata
+    del log, masked_udata
     cleanup()
     
     print 'Backprojection'
-    #contour(np.load(backproj_filename))
+    #contour(backproj)
     plt.subplot(121)
-    c = 0.1
-    a = np.log(np.abs(np.where(np.logical_and(image, np.isfinite(image)), image, c*np.ones_like(image)))) 
-    plt.imshow(a, cmap='gray')
+    log = np.abs( np.log( np.where( np.isfinite(image), image, np.ones_like( image)))) 
+    plt.imshow(log, cmap='gray')
     plt.ylim(0, imy)
     plt.title(filepath)
     plt.subplot(122)
-    plt.imshow(np.load(backproj_filename), cmap='binary')
+    plt.imshow(backproj, cmap='binary')
     plt.ylim(0, imy)
     plt.title(backproj_filename)
     plt.show()
     #___________________________________TODO SAVE PLOT
-    del a, c
+    del log
     cleanup()
     
     print 'Theta Spectrum'
