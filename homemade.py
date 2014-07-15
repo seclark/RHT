@@ -18,6 +18,72 @@ import string
 
 import rht
 
+
+    '''
+    try:
+        isZEA = filepath.endswith('.fits') and any(['ZEA' in x.upper() for x in [hdu.header['CTYPE1'], hdu.header['CTYPE2']] ])
+    except:
+        #CTYPE1 or CTYPE2 not found in header keys
+        #Assume file must not be ZEA... Treat as a rectangle
+        isZEA = False
+
+    if isZEA:
+        #data = np.where(np.isfinite(data), data, np.zeros_like(data))
+        #plt.contour(data)
+        #plt.show()
+        #plt.imshow(data)
+        #plt.show()
+        #exit()
+
+        #Making Round Mask for ZEA data 
+        datay, datax = data.shape
+        mnvals = np.indices(data.shape)
+        pixcrd = np.zeros((datax*datay,2), np.float_)
+        pixcrd[:,0] = mnvals[:,:][0].reshape(datax*datay)
+        pixcrd[:,1] = mnvals[:,:][1].reshape(datax*datay)
+
+        #Use astropy.wcs module to transform coords
+        w = wcs.WCS(hdu.header) #TODO verify accuracy of this_______________________________________________________
+        #w = wcs.WCS(naxis=2)
+        #w.wcs.crpix = [hdu.header['CRPIX1'], hdu.header['CRPIX2']] #[1.125000000E3, 1.125000000E3]
+        #w.wcs.cdelt = [hdu.header['CD1_1'], hdu.header['CD2_2']] #np.array([-8.00000000E-2, 8.00000000E-2])
+        #w.wcs.crval = [hdu.header['CRVAL1'], hdu.header['CRVAL2']]#[0.00000000E0, -9.00000000E1]
+        #w.wcs.ctype = [hdu.header['CTYPE1'], hdu.header['CTYPE2']] #['RA---ZEA', 'DEC--ZEA']
+        
+        worldc = w.wcs_pix2world(pixcrd, 1)
+        worldcra = worldc[:,0].reshape(*data.shape) 
+        worldcdec = worldc[:,1].reshape(*data.shape)
+        #plt.contour(worldcra)
+        #plt.show()
+        #plt.contour(worldcdec)
+        #plt.show()
+        
+        #Mask at both diameters: 2*smr and wlen
+        gm = np.zeros_like(data)
+        wsquare1 = np.ones((2*smr, 2*smr), np.int) 
+        wkernel = circ_kern(wsquare1, 2*smr)
+        gm[worldcdec < 0] = 1
+        gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
+        gg = gmconv.copy()
+        gg[gmconv < np.max(gmconv)] = 0
+        gg[gmconv == np.max(gmconv)] = 1
+        smr_mask = gg
+
+        gm = np.zeros_like(data)
+        wsquare1 = np.ones((wlen, wlen), np.int) 
+        wkernel = circ_kern(wsquare1, wlen)
+        gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
+        gm[worldcdec < 0] = 1
+        gg = gmconv.copy()
+        gg[gmconv < np.max(gmconv)] = 0
+        gg[gmconv == np.max(gmconv)] = 1
+        wlen_mask = gg
+
+        #TODO___ TRANSFORM GOES UNUSED???______________________________________________________________________________
+        #return data, smr_mask, wlen_mask
+    '''
+
+
 #-----------------------------------------------------------------------------------------
 #Functions
 #-----------------------------------------------------------------------------------------
