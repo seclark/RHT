@@ -23,8 +23,7 @@ import string
 TEXTWIDTH = 60 #Width of some displayed text objects
 WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.75 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
-SMR = 5 #11.0 #smoothing radius of unsharp mask function
-# ulen : length of unsharp mask square. Must be at least wlen + smr/2
+SMR = 11.0 #smoothing radius of unsharp mask function
 
 #-----------------------------------------------------------------------------------------
 #Initialization
@@ -35,6 +34,44 @@ SMR = 5 #11.0 #smoothing radius of unsharp mask function
 
 #-----------------------------------------------------------------------------------------
 #Utility Functions
+#-----------------------------------------------------------------------------------------
+def announcement(strings):
+    result = ''
+    if type(strings) == list:
+        strings.append('*'*TEXTWIDTH)
+        strings.insert(0, '*'*TEXTWIDTH)
+        result = '\n'.join(string.center(str(s), TEXTWIDTH, ' ') for s in strings) 
+    elif type(strings) == str:
+        result = announcement(strings.split('\n'))
+    else:
+        result = announcement(str(strings))
+    return result
+
+def announce(strings):
+    print announcement(strings)
+
+def update_progress(progress, message='Progress:'):
+    #Create progress meter
+    length = TEXTWIDTH//2
+    messlen = TEXTWIDTH-(length+4)
+    message = string.ljust(message, messlen)[:messlen]
+    if 0.0 <= progress <= 1.0:
+        p = int(length*progress/1.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(length-p), message))
+        sys.stdout.flush()
+        if p == length:
+            print ''
+    elif 0.0 <= progress <= 100.0:
+        p = int(length*progress/100.0) 
+        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(length-p), message)) 
+        sys.stdout.flush()
+        if p == length:
+            print ''
+    else:
+        pass ##TODO Progress Bar Failure
+
+#-----------------------------------------------------------------------------------------
+#Image Processing Functions
 #-----------------------------------------------------------------------------------------
 def is_valid_file(filepath):
     '''
@@ -54,55 +91,21 @@ def is_valid_file(filepath):
 
 def center(filepath, shape=(500, 500)):
     #Returns a cutout from the center of the image
-    xy_array, datax, datay = getData(filepath)
+    data = getData(filepath)
+    datay, datax = data.shape 
     x, y = shape
     if 0 < x < datax and 0 < y < datay:
         left = int(datax//2-x//2)
         right = int(datax//2+x//2)
         up = int(datay//2+y//2)
         down = int(datay//2-y//2)
-        cutout = np.array(xy_array[down:up, left:right])
+        cutout = np.array(data[down:up, left:right])
         filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
         center_filename = filename+'_center.npy'
         np.save(center_filename, cutout)
         return center_filename
     else:
         return None 
-
-def announcement(strings):
-    result = ''
-    if type(strings) == list:
-        strings.append('*'*TEXTWIDTH)
-        strings.insert(0, '*'*TEXTWIDTH)
-        result = '\n'.join(string.center(str(s), TEXTWIDTH, ' ') for s in strings) 
-    elif type(strings) == str:
-        result = announcement(strings.split('\n'))
-    else:
-        result = announcement(str(strings))
-    return result
-
-def announce(strings):
-    print announcement(strings)
-
-def update_progress(progress, message='Progress:'):
-    #Create progress meter
-    if progress > 0.0 and progress <= 1.0:
-        p = int((TEXTWIDTH//2)*progress/1.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2)-p), message))
-        sys.stdout.flush()
-        if p == (TEXTWIDTH//2):
-            print ''
-    elif progress > 0.0 and progress <= 100.0:
-        p = int((TEXTWIDTH//2)*progress/100.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*((TEXTWIDTH//2)-p), message)) 
-        sys.stdout.flush()
-        if p == (TEXTWIDTH//2):
-            print ''
-    elif progress == 0.0:
-        sys.stdout.write('\r{1} [{0}]%'.format(' '*(TEXTWIDTH//2), message))
-        sys.stdout.flush()
-    else:
-        pass ##TODO Progress Bar Failure
 
 def putXYT(xyt_filename, hi, hj, hthets, compressed=True):
     if compressed:
@@ -113,138 +116,214 @@ def putXYT(xyt_filename, hi, hj, hthets, compressed=True):
 def getXYT(xyt_filename, rebuild=False):    
     #Reads in a .npz file containing coordinate pairs in image space (hi, hj)
     #And Hough space arrays covering theta space at each of those points
-    data = np.load(xyt_filename)
+    data = np.load(str(xyt_filename))
     hi = data['hi']
     hj = data['hj']
     hthets = data['hthets']
     if rebuild:
         #Can recreate an entire 3D array of mostly 0s
-        image, imx, imy = getData(filepath)
+        image = getData(filepath)
+        imy, imx = image.shape
         ntheta = len(hthets[0])
         xyt = np.zeros((imy, imx, ntheta))
-        coords = zip(hi, hj)
+        coords = zip(hj, hi)
         for c in range(len(coords)):
-            xyt[coords[c][1]][coords[c][0]] = hthets[c]
+            j,i = coords[c]
+            xyt[j][i] = hthets[c]
         return xyt
     else:
         #Returns the sparse form only
         return hi, hj, hthets
 
-def getData(filepath):
-    #Reads in and properly rotates images from various sources
+def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
+    #Reads in and makes proper masks for images from various sources
+    #smr_mask masks any pixel within smr of any bad pixels, and the edge
+    #wlen_mask masks any pixel within wlen of any bad pixels, and the edge
     #Supports .fits, .npy, and PIL formats
-    if filepath.endswith('.fits'):
-        hdulist = fits.open(filepath) #Opens HDU list
-        data = hdulist[0].data #Reads all data as an array
-    elif filepath.endswith('.npy'):
-        data = np.load(filepath) #Reads numpy files #TODO
-    else:
-        data = scipy.ndimage.imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
     
-    data = np.array(data) 
-    y, x = data.shape #Gets dimensions
-    data = np.nan_to_num(data)
-    return data, x, y
+    try:
+        #Reading Data
+        if filepath.endswith('.fits'):
+            #Fits file handling
+            hdu = fits.open(filepath)[0] #Opens first HDU
+            data = hdu.data #Reads all data as an array
 
-def setParams(gassslice, w, s, f, ZEA=False):
-    wlen = float(w)  #Window diameter
-    frac = float(f) #Theta-power threshold to store
-    smr = float(s) #Smoothing radius
+        elif filepath.endswith('.npy'):
+            data = np.load(filepath) #Reads numpy files #TODO
+        
+        else:
+            data = scipy.ndimage.imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords         
+    except:
+        #Failure Reading Data
+        if make_mask:
+            print 'Failure in getData('+filepath+')... Returning None, None, None'
+            return None, None, None
+        else:
+            print 'Failure in getData('+filepath+')... Returning None'
+            return None 
 
-    ulen = np.ceil(wlen + smr/2) #Must be odd
-    if np.mod(ulen, 2) == 0:
-        ulen += 1
-    ucntr = np.floor(ulen/2)
+    #TODO___________________________________________________________________________clean_data
+    #Sets all non-finite values (NaN or Inf) to the minimum finite value of data
+    #datamin = np.nanmin(data)
+    #clean_data = np.where(np.isfinite(data), data, datamin*np.ones_like(data))
+    
+    #Sets all non-finite values (NaN or Inf) to zero
+    #clean_data = np.where(np.isfinite(data), data, np.zeros_like(data))
+    
+    if not make_mask:
+        #Done Reading Data, No Mask Needed
+        return data
+    
+    #Mask Needed
 
-    wcntr = np.floor(wlen/2)
-    ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))  
+    '''
+    try:
+        isZEA = filepath.endswith('.fits') and any(['ZEA' in x.upper() for x in [hdu.header['CTYPE1'], hdu.header['CTYPE2']] ])
+    except:
+        #CTYPE1 or CTYPE2 not found in header keys
+        #Assume file must not be ZEA... Treat as a rectangle
+        isZEA = False
 
-    
-    dtheta = np.pi/ntheta
-    theta = np.arange(0, np.pi, dtheta)
-    
-    wsquare1 = np.ones((wlen, wlen), np.int_)
-    kernel = circ_kern(wsquare1, smr) 
-    wkernel = circ_kern(wsquare1, wlen) 
-    
-    if ZEA:
-        mask = makemask(wkernel, gassslice)
-    else:
-        mask = None #Default is no mask
+    if isZEA:
+        #data = np.where(np.isfinite(data), data, np.zeros_like(data))
+        #plt.contour(data)
+        #plt.show()
+        #plt.imshow(data)
+        #plt.show()
+        #exit()
 
-    return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
+        #Making Round Mask for ZEA data 
+        datay, datax = data.shape
+        mnvals = np.indices(data.shape)
+        pixcrd = np.zeros((datax*datay,2), np.float_)
+        pixcrd[:,0] = mnvals[:,:][0].reshape(datax*datay)
+        pixcrd[:,1] = mnvals[:,:][1].reshape(datax*datay)
 
+        #Use astropy.wcs module to transform coords
+        w = wcs.WCS(hdu.header) #TODO verify accuracy of this_______________________________________________________
+        #w = wcs.WCS(naxis=2)
+        #w.wcs.crpix = [hdu.header['CRPIX1'], hdu.header['CRPIX2']] #[1.125000000E3, 1.125000000E3]
+        #w.wcs.cdelt = [hdu.header['CD1_1'], hdu.header['CD2_2']] #np.array([-8.00000000E-2, 8.00000000E-2])
+        #w.wcs.crval = [hdu.header['CRVAL1'], hdu.header['CRVAL2']]#[0.00000000E0, -9.00000000E1]
+        #w.wcs.ctype = [hdu.header['CTYPE1'], hdu.header['CTYPE2']] #['RA---ZEA', 'DEC--ZEA']
+        
+        worldc = w.wcs_pix2world(pixcrd, 1)
+        worldcra = worldc[:,0].reshape(*data.shape) 
+        worldcdec = worldc[:,1].reshape(*data.shape)
+        #plt.contour(worldcra)
+        #plt.show()
+        #plt.contour(worldcdec)
+        #plt.show()
+        
+        #Mask at both diameters: 2*smr and wlen
+        gm = np.zeros_like(data)
+        wsquare1 = np.ones((2*smr, 2*smr), np.int) 
+        wkernel = circ_kern(wsquare1, 2*smr)
+        gm[worldcdec < 0] = 1
+        gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
+        gg = gmconv.copy()
+        gg[gmconv < np.max(gmconv)] = 0
+        gg[gmconv == np.max(gmconv)] = 1
+        smr_mask = gg
 
+        gm = np.zeros_like(data)
+        wsquare1 = np.ones((wlen, wlen), np.int) 
+        wkernel = circ_kern(wsquare1, wlen)
+        gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
+        gm[worldcdec < 0] = 1
+        gg = gmconv.copy()
+        gg[gmconv < np.max(gmconv)] = 0
+        gg[gmconv == np.max(gmconv)] = 1
+        wlen_mask = gg
 
-def makemask(wkernel, gassslice):
-    # The following is specific to a certain data set (the Parkes Galactic All-Sky Survey)
-    # which was in a Zenith-Equal-Area projection. This projects the sky onto a circle, and so 
-    # makemask just makes sure that nothing outside that circle is counted as data.
+        #TODO___ TRANSFORM GOES UNUSED???______________________________________________________________________________
+        #return data, smr_mask, wlen_mask
+    '''
 
-    #gassfile = '/Users/susanclark/Documents/gass_10.zea.fits'
-    #gassdata  = pyfits.getdata(gassfile, 0)
-    #gassslice = gassdata[45, :, :]
-    
-    datay, datax = np.shape(gassslice)
-    
-    mnvals = np.indices((datax,datay))
-    pixcrd = np.zeros((datax*datay,2), np.float_)
-    pixcrd[:,0] = mnvals[:,:][0].reshape(datax*datay)
-    pixcrd[:,1] = mnvals[:,:][1].reshape(datax*datay)
-    
-    w = wcs.WCS(naxis=2)
-    #TODO READ FROM FITS HEADER FILE!
-    w.wcs.crpix = [1.125000000E3, 1.125000000E3]
-    w.wcs.cdelt = np.array([-8.00000000E-2, 8.00000000E-2])
-    w.wcs.crval = [0.00000000E0, -9.00000000E1]
-    w.wcs.ctype = ['RA---ZEA', 'DEC--ZEA']
-    
-    worldc = w.wcs_pix2world(pixcrd, 1)
-    
-    worldcra = worldc[:,0].reshape(datax,datay)
-    worldcdec = worldc[:,1].reshape(datax,datay)
-    
-    gm = np.zeros(gassslice.shape)
-    #gm[worldcdec < 0] = 1
-    
-    gmconv = scipy.ndimage.filters.correlate(gm, weights=wkernel)
-    gg = gmconv.copy() #copy.copy(gmconv)
-    gg[gmconv < np.max(gmconv)] = 0
-    gg[gmconv == np.max(gmconv)] = 1
-    
-    return gg
+    def bad_pixels(data):
+        #Returns an array of the same shape as data
+        #Bad values become 1, all else become 0
+        return np.isnan(data)
 
+    def all_within_diameter_are_good(data, diameter):
+        r = int(np.floor(diameter/2))
 
-#Performs a circle-cut of given radius on inkernel.
+        #Base case, 'assume all pixels are bad'
+        mask = np.zeros_like(data)
+
+        #Edge case, 'any pixel not within r of the edge might be ok'
+        datay, datax = data.shape
+        mask[r:datay-r, r:datax-r] = 1
+
+        #Identifiably bad case, 'all pixels within r of me are not bad'
+        square = np.ones((diameter, diameter), dtype=np.int) 
+        circle = circ_kern(square, diameter)
+        y_arr, x_arr = np.nonzero(circle)
+
+        #IMPLEMENTATION1: Zero any mask pixel within r of a bad pixel
+        coords = zip(*np.nonzero(bad_pixels(data)))
+        for c in range(len(coords)):
+            j,i = coords[c]
+            x = (x_arr - r + i).astype(np.int)
+            y = (y_arr - r + j).astype(np.int)
+            mask[y, x] = 0
+        '''
+        #IMPLEMENTATION2: For each good pixel, 'Not Any Bad pixels near me'
+        coords = zip(*np.nonzero(mask))
+        for c in range(len(coords)):
+            j,i = coords[c]
+            x = (x_arr - r + i).astype(np.int)
+            y = (y_arr - r + j).astype(np.int)
+            mask[j][i] = np.logical_not(np.any(bad_pixels( data[y, x] )))
+        '''
+        return mask 
+
+    #Mask a Rectangular chunk of a rectangular image! #TODO________________________________________May Not be right?
+    smr_mask = all_within_diameter_are_good(data, 2*smr)
+    #wlen_mask = all_within_diameter_are_good(data, wlen) 
+
+    nans = np.empty(smr_mask.shape, dtype=np.int)
+    nans.fill(np.nan)
+    data = np.where(smr_mask, data, nans)
+    wlen_mask = all_within_diameter_are_good(smr_mask, wlen)
+
+    return data, smr_mask, wlen_mask
+
+#Performs a circle-cut of given diameter on inkernel.
 #Outkernel is 0 anywhere outside the window.    
-def circ_kern(inkernel, radius):
+def circ_kern(inkernel, diameter):
     #These are all the possible (m,n) indices in the image space, centered on center pixel
-    mnvals = np.indices((len(inkernel), len(inkernel)))
+    mnvals = np.indices(inkernel.shape)
     kcntr = np.floor(len(inkernel)/2.0)
     mvals = mnvals[:,:][0] - kcntr
     nvals = mnvals[:,:][1] - kcntr
 
     rads = np.sqrt(nvals**2 + mvals**2)
-    outkernel = inkernel.copy() #copy.copy(inkernel)
-    outkernel[rads > radius/2] = 0
     
-    return outkernel
+    return np.greater(rads, diameter/2)
 
 #Unsharp mask. Returns binary data.
-def umask(data, inkernel):    
-    outdata = scipy.ndimage.filters.correlate(data, weights=inkernel)
+def umask(data, radius, smr_mask=None):
+
+    square = np.ones((2*radius, 2*radius), np.int) #Square of 1s
+    kernel = circ_kern(square, 2*radius) #Stores an smr-sized circle
+    outdata = scipy.ndimage.filters.correlate(data, weights=kernel)
     
     #Our convolution has scaled outdata by sum(kernel), so we will divide out these weights.
-    kernweight = np.sum(inkernel, axis=0)
+    kernweight = np.sum(kernel, axis=0)
     kernweight = np.sum(kernweight, axis=0)
     subtr_data = data - outdata/kernweight
     
     #Convert to binary data
-    bindata = subtr_data.copy() #copy.copy(subtr_data)
-    bindata[subtr_data > 0] = 1
-    bindata[subtr_data <= 0] = 0
+    bindata = np.greater(subtr_data, 0)
 
-    return bindata
+    if smr_mask == None:
+        return bindata
+    else:
+        #nans = np.empty(bindata.shape, dtype=np.int)
+        #nans.fill(np.nan)
+        #return np.where(smr_mask, bindata, nans) #TODO________________________________________May Not be right?
+        return np.where(smr_mask, bindata, np.zeros_like(bindata)) 
 
 def fast_hough(in_arr, xyt, ntheta):
     incube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)
@@ -257,7 +336,7 @@ def all_thetas(window, thetbins):
     ntheta = len(thetbins) #Parse height in theta
     
     #Makes prism; output has dimensions (x, y, theta)
-    out = np.zeros((wy, wx, ntheta), np.int_)
+    out = np.zeros((wy, wx, ntheta), np.int)
     
     for i in xrange(wx):
         for j in xrange(wy):
@@ -329,85 +408,53 @@ def houghnew(img, theta=None, idl=False):
     return out, theta, bins
 
 
-def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask): 
-    update_progress(0.0)
-    
+def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask): 
+    update_progress(0.0, '3/4::')
+    wcntr = int(np.floor(wlen/2))
+
     #Circular kernels
-    wsquare1 = np.ones((wlen, wlen), np.int_) #Square of 1s
-    kernel = circ_kern(wsquare1, smr) #Stores an smr-sized circle
+    wsquare1 = np.ones((wlen, wlen), np.int) #Square of 1s
     wkernel = circ_kern(wsquare1, wlen) #And an wlen-sized circle
     xyt = all_thetas(wkernel, theta) #Cylinder of all theta values per point
-    ##print xyt.shape, 'xyt shape'
 
-    #unsharp mask the whole data set
-    udata = umask(data, kernel)
-    
+    #Unsharp masks the whole data set
+    masked_udata = umask(data, smr, smr_mask=smr_mask) 
+
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(wkernel, xyt, ntheta) #Length ntheta array
+    dcube = np.repeat(masked_udata[:,:,np.newaxis], repeats=ntheta, axis=2)
 
     Hthets = []
     Hi = []
     Hj = []
-    
-    dcube = np.repeat(udata[:,:,np.newaxis], repeats=ntheta, axis=2)
-    
     htapp = Hthets.append
     hiapp = Hi.append
     hjapp = Hj.append
     npsum = np.sum
 
-    #Loop: (j,i) are centerpoints of data window.
-    datay, datax = data.shape 
-    '''
-    for j in xrange(datay):        
-
-        update_progress(j/(datay-1.0)) #For monitoring progress TODO
-        if j >= ucntr and j < (datay - ucntr):
-            for i in xrange(datax):
-                
-                if i >= ucntr and i < (datax - ucntr):
-                '''
-    #TODO-------------------------------------------------------   
-    start = ucntr
-    stopy = (datay-ucntr)
-    stopx = (datax-ucntr)
-    if stopx == np.floor(stopx): #TODO this is purely < stop
-        stopx += 1 
-    if stopy == np.floor(stopy): 
-        stopy += 1
-
-    for j in np.arange(start, stopy, 1):        
-        update_progress((j-start)/(stopy-start-1.0)) #For monitoring progress TODO
-            
-        for i in np.arange(start, stopx, 1):
-
-            #TODO-------------------------------------------------------
-            if mask is None or (mask is not None and mask[j,i] == 1):
-
-                try:
-                    wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1,:]   
-
-                    h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
-                    #TODO CODE FAILS HERE, BY FAILING TO BROADCAST +/-1 length arrays!
-
-                    #if j == ucntr and i == ucntr:
-                    #print 'h', h.shape
-                    #print 'h1', h1.shape
-                    #print 'frac', frac 
-
-                    hout = h/h1 - frac #h, h1 are Length ntheta arrays
-                    hout[hout<0.0] = 0.0
-                    #hout.clip(min=0.0)
-                    
-                    #if npsum(hout) > 0:
-                    if any(hout):
-                        htapp(hout)
-                        hiapp(i)
-                        hjapp(j)
-                except:
-                    print 'Failure:', i, j, wcntr
-                finally:
-                    pass 
+    coords = zip( *np.nonzero( np.logical_and( wlen_mask, smr_mask )))
+    for c in range(len(coords)):
+        j,i = coords[c]
+        update_progress(c/(len(coords)-1), '3/4::')
+        try:
+            wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
+            h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
+            #________________________________________
+            #hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
+            #hout[hout<0.0] = 0.0
+            #_____________________________________________________________________________________________TODO
+            hout = np.divide(h, h1) #np.true_divide(h, h1)
+            hout *= np.greater_equal(hout, frac)
+            #________________________________________
+            if any(hout):
+                htapp(hout)
+                hiapp(i)
+                hjapp(j)
+        except:
+            print 'Failure:', i, j, wcntr
+            raise
+        #finally:
+            #pass 
 
     return np.array(Hthets), np.array(Hi), np.array(Hj)
 
@@ -415,61 +462,60 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
 #Interactive Functions
 #-----------------------------------------------------------------------------------------
 
-def rht(filepath, wlen=WLEN, frac=FRAC, smr=SMR):
+def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     filepath: String path to source image, which will have the Rolling Hough Transform applied
+    force: Boolean indicating if rht() should still be run, even when output exists for these inputs
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
     smr: Integer radius of gaussian smoothing kernel to be applied to an image
+
+    Saves:
+        X-Y-ThetaPower Array --> name_xyt.npz
+
+    return: Boolean, if the function succeeded
     '''
     if not is_valid_file(filepath):
         #Checks to see if a file should have the rht applied to it...
+        print 'Invalid filepath encountered in rht('+filepath+')...'
         return False
+
     try:
-        #print '1/3.. Loading Data'
-        xy_array, datax, datay = getData(filepath)
-        #print '1/3.. Successfully Loaded Data!'
-
         filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-        print '1/3:: Analyzing', filename, str(datax)+'x'+str(datay)
-
-        #print '2/3.. Setting Params'
-        #TODO wrap parameter input
-        isZEA = False
-        if filepath.endswith('.fits'): 
-            hdu = fits.open(filepath)[0]
-            headers = hdu.header['CTYPE1'] + hdu.header['CTYPE2'] 
-            isZEA = any(['ZEA' in x.upper() for x in headers]) #TODO__More possibilities
-        wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(xy_array, wlen, smr, frac, isZEA)
-        #print '2/3.. Successfully Set Params!'
-        print '2/3:: Window Diameter:', str(wlen)+',', 'Smoothing Radius:', str(smr)+',', 'Threshold:', str(frac)
-
-        #print '3/3.. Runnigh Hough Transform'
-        hthets, hi, hj = window_step(xy_array, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)
-        
         output='.'
         xyt_filename = os.path.join(output, filename + '_xyt.npz')
+
+        if not force and os.path.isfile(xyt_filename):
+            return True
+            #TODO CHECK WHETHER AN OUTPUT EXISTS WITH THIS PARAMETER INPUT FIRST!! ______________________________________________
+
+        print '1/4:: Retrieving Data from:', filepath
+        data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
+        datay, datax = data.shape
+
+        print '2/4::', 'Size:', str(datax)+'x'+str(datay), 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)
+        
+        ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0))) #TODO_______________ntheta
+        theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
+
+        hthets, hi, hj = window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask) #TODO__________________
+        
+
         putXYT(xyt_filename, hi, hj, hthets)
 
-        #hi_filename = os.path.join(output, filename + '_hi.npy')
-        #hj_filename = os.path.join(output, filename + '_hj.npy')
-        #hthets_filename = os.path.join(output, filename + '_hthets.npy')
-        #np.save(hi_filename, hi)
-        #np.save(hj_filename, hj)
-        #np.save(hthets_filename, hthets)
-
-        print '3/3:: Successfully Saved Data As', xyt_filename
+        print '4/4:: Successfully Saved Data As', xyt_filename
         return True
+    
     except:
-        raise
+        raise #__________________________________________________________________________________________________________ Raise
         return False
 
 
 def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     filepath: String path to source image, used in forcing and backprojection
-    force: Boolean indicating if rht() should be run if required_files cannot be found
+    force: Boolean indicating if rht() should be run, even when required_files are found
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
@@ -481,32 +527,25 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     return: Boolean, if the function succeeded
     '''
-    #Read in rht output files
+    #Makes sure relevant files are present! 
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
     xyt_filename = filename + '_xyt.npz'
-
-    #Makes sure relevant files are present! 
     required_files = [xyt_filename]
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing:
+        #Runs rht(filepath), since that has not been done
+        rht(filepath, force=force, wlen=wlen, frac=frac, smr=smr)       #TODO FORCE__________
+    else:
         if force:
-            #Runs rht(filepath), since that has not been done
-            rht(filepath, wlen=wlen, frac=frac, smr=smr)
+            #Runs rht(filepath), even if it has been done
+            rht(filepath, force=True, wlen=wlen, frac=frac, smr=smr)
         else:
-            #Warns user against interpreting file
-            print 'Warning: required files not present for interpret(filepath)...'
-            return False
+            #Good to go! No rht needed!
+            pass 
 
-    #Proceed with iterpreting
+
+    #Proceed with iterpreting the rht output files
     hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
-    '''
-    hi_filename = filename + '_hi.npy'
-    hj_filename = filename + '_hj.npy'
-    hthets_filename = filename + '_hthets.npy'
-    hi = np.load(hi_filename)
-    hj = np.load(hj_filename)
-    hthets = np.load(hthets_filename)
-    '''
 
     #Spectrum *Length ntheta array of theta power (above the threshold) for whole image*
     spectrum = [np.sum(theta) for theta in hthets]
@@ -514,7 +553,8 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     np.save(spectrum_filename, np.array(spectrum))
 
     #Backprojection only *Full Size* #Requires image
-    image, imx, imy = getData(filepath)
+    image = getData(filepath)
+    imy, imx = image.shape
     backproj = np.zeros_like(image)
     coords = zip(hi, hj)
     for c in range(len(coords)):
@@ -532,7 +572,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     filepath: String path to source image, used in forcing and backprojection
-    force: Boolean indicating if interpret() should be run if required_files cannot be found
+    force: Boolean indicating if interpret() should be run, even when required_files are found
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
@@ -544,49 +584,85 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     return: Boolean, if the function succeeded
     '''
-    #Loads in relevant files
-    image, imx, imy = getData(filepath)
+    #Makes sure relevant files are present!
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
-
-    #Makes sure relevant files are present!
     required_files = [backproj_filename, spectrum_filename]
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing:
+        #Interprets file, since that has not been done
+        interpret(filepath, force=force, wlen=wlen, frac=frac, smr=smr)  #TODO FORCE__________
+    else:
         if force:
-            #Interprets file, since that has not been done
+            #Interprets file, even if it has been done
             interpret(filepath, force=True, wlen=wlen, frac=frac, smr=smr)
         else:
-            #Warns user against interpreting file
-            print 'Warning: required files not present for viewer(filepath)...'
-            return False
+            #Good to go! No interpretation needed!
+            pass 
+
+    #Loads in relevant files
+    image, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
+    imy, imx = image.shape
+    backproj = np.load(backproj_filename)
+    
+    def cleanup(all=False):
+        plt.clf()
+        plt.cla()
+        if all:
+            plt.close('all')
+        else:
+            plt.close()
+
+    print 'Whole Figure'
+    fig, axes = plt.subplots(nrows=2, ncols=2)
+    log = np.abs( np.log( np.where( np.isfinite(image), image, np.ones_like( image)))) 
+    axes[0][0].imshow(log, cmap='gray')
+    axes[0][0].set_ylim([0, imy])
+    axes[0][0].set_title(filepath)
+
+    back = np.where(wlen_mask, backproj, np.zeros_like(wlen_mask))
+    axes[1][1].imshow(back, cmap='gray') #cmap='binary')
+    axes[1][1].set_ylim([0, imy])
+    axes[1][1].set_title(backproj_filename)
+
+    #axes[1][0].imshow(np.logical_and(smr_mask, wlen_mask), cmap='gray') #cmap='binary')
+    #axes[1][0].set_ylim([0, imy])
+    #axes[1][0].set_title('Mask')
+
+    masked_udata = umask(image, smr, smr_mask=smr_mask)
+    axes[0][1].imshow(masked_udata, cmap='gray') #cmap='binary')
+    axes[0][1].set_ylim([0, imy])
+    axes[0][1].set_title('Sharpened')
+
+    plt.show(fig)
+    #___________________________________TODO SAVE PLOT
+    del log, masked_udata
+    cleanup()
     
     print 'Backprojection'
-    #contour(np.load(backproj_filename))
+    #contour(backproj)
     plt.subplot(121)
-    plt.imshow(image, cmap='gray')
+    log = np.abs( np.log( np.where( np.isfinite(image), image, np.ones_like( image)))) 
+    plt.imshow(log, cmap='gray')
     plt.ylim(0, imy)
     plt.title(filepath)
     plt.subplot(122)
-    plt.imshow(np.load(backproj_filename), cmap='gray')
+    plt.imshow(backproj, cmap='binary')
     plt.ylim(0, imy)
     plt.title(backproj_filename)
     plt.show()
     #___________________________________TODO SAVE PLOT
-    plt.clf()
-    plt.cla()
-    plt.close()
-
+    del log
+    cleanup()
+    
     print 'Theta Spectrum'
     spectrum = np.load(spectrum_filename)
     ntheta = len(spectrum)
     plt.plot(np.linspace(0.0, 180.0, num=ntheta, endpoint=False), spectrum)
     #___________________________________TODO SAVE PLOT
     plt.show()
-    plt.clf()
-    plt.cla()
-    plt.close()
+    cleanup()
 
     #Polar plot of theta power
     print 'Linearity'
@@ -594,21 +670,18 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     t = np.linspace(0.0, 2*np.pi, num=len(r), endpoint=False)
     plt.polar(t, r)
     plt.show()
-    plt.clf()
-    plt.cla()
-    plt.close()
+    cleanup()
 
     #Clear all and exit successfully
-    plt.clf()
-    plt.cla()
-    plt.close('all')
+    cleanup(all=True)
     return True
 
 
-def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
+def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     source: A filename, or the name of a directory containing files to transform
     display: Boolean flag determining if the input is to be interpreted and displayed
+    force: Boolean flag determining if rht() will be run, when output already exists
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
@@ -616,14 +689,13 @@ def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     return: Boolean, if the function succeeded
     '''
-    #Ensure that the input is a non-None string
-    while source is None or type(source) != str: #TODO Fix escape char bug
+    #Ensure that the input is a non-None, non-Empty string
+    while source is None or type(source) != str or len(source)==0:
         try:
-            source = raw_input('Please enter the name of a file or directory to transform:')
+            source = raw_input('Source:')
         except:
             source = None
     
-    #______________________________________________________________________________CLEANS SOURCE
     #Interpret whether the Input is a file or directory, excluding all else
     pathlist = []
     if os.path.isfile(source):
@@ -656,12 +728,12 @@ def main(source=None, display=False, wlen=WLEN, frac=FRAC, smr=SMR):
         success = True
         try:
             if (display):
-                success = viewer(path, force=True, wlen=wlen, frac=frac, smr=smr)
+                success = viewer(path, force=force, wlen=wlen, frac=frac, smr=smr)
             else:
-                success = rht(path, wlen=wlen, frac=frac, smr=smr)
+                success = rht(path, force=force, wlen=wlen, frac=frac, smr=smr)
         except:
-            raise
             success = False
+            raise #____________________________________________________________________________________________________________________HANG??
         finally:
             if success:
                 summary.append(path+': Passed')
@@ -689,18 +761,21 @@ SINGLE ARGS:
  pathname ==> Input file or directory to run the RHT on
  >>>python rht.py dirname/filename.fits
   
- -h, help ==> Displays this message
+ -h ==> Displays this message
  >>>python rht.py help
 
- -p, params ==> Displays Default Params
+ -p ==> Displays Default Params
  >>>python rht.py -p
  
 MULTIPLE ARGS:
  Creates 'dirname/filename_xyt.npz' for each input image
  1st ==> Path to input file or directory
  2nd:nth ==> Named inputs controlling params and flags
+
   Flags: 
-  -d  #Sets whether ouput is displayed
+  -d  #Ouput is to be Displayed
+  -f  #Exisitng _xyt.npz is to be Forcefully overwritten
+
   Params:
   -wlen=value  #Sets window diameter
   -smr=value  #Sets smoothing radius
@@ -719,24 +794,25 @@ MULTIPLE ARGS:
 
     elif len(sys.argv) == 2:
         #Parses input for single argument flags
-        source = sys.argv[1]
-        if source.lower() in ['help', '-help', 'h', '-h']:
+        SOURCE = sys.argv[1]
+        if SOURCE.lower() in ['help', '-help', 'h', '-h']:
             announce(help)
-        elif source.lower() in ['params', 'param', 'p', '-p', '-params', '-param']:
+        elif SOURCE.lower() in ['params', 'param', 'p', '-p', '-params', '-param']:
             params = ['Default RHT Parameters:']
             params.append('wlen = '+str(WLEN))
             params.append('smr = '+str(SMR))
             params.append('frac = '+str(FRAC))
             announce(params)
         else:
-            main(source)
+            main(source=SOURCE)
 
     else:
-        source = sys.argv[1]
+        SOURCE = sys.argv[1]
         args = sys.argv[2:]
         
         #Default flag values
         DISPLAY = False
+        FORCE = False
         
         #Default param values
         wlen = WLEN
@@ -748,6 +824,8 @@ MULTIPLE ARGS:
                 #FLAGS which DO NOT carry values 
                 if arg.lower() in ['d', '-d', 'display', '-display' ]:
                     DISPLAY = True
+                elif arg.lower() in ['f', '-f', 'force', '-force' ]:
+                    FORCE = True
                 else:
                     print 'UNKNOWN FLAG:', arg
             else:
@@ -763,7 +841,7 @@ MULTIPLE ARGS:
                 else:
                     print 'UNKNOWN PARAMETER:', arg
 
-        main(source, display=DISPLAY, wlen=wlen, frac=frac, smr=smr)
+        main(source=SOURCE, display=DISPLAY, force=FORCE, wlen=wlen, frac=frac, smr=smr)
 
     exit()
 

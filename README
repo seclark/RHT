@@ -9,16 +9,49 @@ Requirements (Python 2.7 Only)
 ==================================
 from __future__ import division
 import numpy as np
-import scipy
 import scipy.ndimage
 import math
 from astropy import wcs
 from astropy.io import fits
 import os
 import matplotlib.pyplot as plt
-import copy
 import sys
 import string
+
+==================================
+Instructions For Use (Python)
+==================================
+1. Ensure your Python 2.7 Environment is as up-to-date as possible and contains the required imports
+
+2. Ensure you are able to import the package
+
+>>>import rht 
+
+3. Run the RHT for individual files or directories, with various parameters
+   Output will be placed alongside the input files in the .npz format
+
+>>>rht.main('filepath') #Runs only the RHT for individual images or directories with default params
+
+>>>rht.main('filepath', flag=value, param=value) #Runs with flag set to a boolean and param set to a float
+
+4. Explanation of rht.main() Flags and Parameters
+   Flags: 
+     display=True  #Ouput is to be Displayed
+     force=True    #Exisitng _xyt.npz is to be Forcefully overwritten
+   Params:
+     wlen=value  #Sets window diameter
+     smr=value   #Sets smoothing radius
+     frac=value  #Sets theta power threshold
+
+5. Interpret 'filepath_xyt.npz' to produce a backprojection and theta-frequency plot
+
+>>>rht.interpret('filepath') #Will first call rht.rht('filepath') if necessary
+>>>rht.interpret('filepath', force=True) #Will ALWAYS call rht.rht('filepath', force=True) first
+
+6. Displays the results of previously Interpreted RHT data
+
+>>>rht.viewer('filepath') #Will first call rht.interpret('filepath') if necessary
+>>>rht.viewer('filepath', force=True) #Will ALWAYS call rht.interpret('filepath', force=True) first
 
 ==================================
 Instructions For Use (Terminal)
@@ -34,87 +67,47 @@ SINGLE ARGS:
  pathname ==> Input file or directory to run the RHT on
  >>>python rht.py dirname/filename.fits
   
- -h, help ==> Displays this message
+ -h ==> Displays this message
  >>>python rht.py help
 
- -p, params ==> Displays Default Params
+ -p ==> Displays Default Params
  >>>python rht.py -p
  
 MULTIPLE ARGS:
  Creates 'dirname/filename_xyt.npz' for each input image
  1st ==> Path to input file or directory
  2nd:nth ==> Named inputs controlling params and flags
+
   Flags: 
-  -d  #Sets whether ouput is displayed
+  -d  #Ouput is to be Displayed
+  -f  #Exisitng _xyt.npz is to be Forcefully overwritten
+
   Params:
   -wlen=value  #Sets window diameter
   -smr=value  #Sets smoothing radius
   -frac=value  #Sets theta power threshold
 
 ==================================
-Instructions For Use (Python)
-==================================
-1. Ensure your Python 2.7 Environment is as up-to-date as possible
-
-2. Ensure you are able to import the package
-
->>>import rht
-
-3. Call the following code for single files, or in batch mode, with current params
-   Output will be placed alongside the input files in the .npz format
-
->>>rht.main('batch_directory') #For Batch Jobs or Individual Images
->>>rht.rht('filepath') #For Individual Images
-
-4. Looks for 'filepath_xyt.npz' to produce a backprojection and theta-frequency plot
-
->>>rht.interpret('filepath') 
->>>interpret('filepath', force=True) #Will first call rht.rht('filepath') if necessary
-
-5. Loads and displays the results of previously analyzed data
-
->>>rht.viewer('filepath') 
->>>rht.viewer('filepath', force=True) #Will first call rht.interpret('filepath', force=True) if necessary
-
-==================================
-#TODO
-==================================
-
-?. To modify wlen, smr, or frac manually, run setParams() 
-   wlen : Diameter of a 'window' - the data to be evaluated at one time
-   frac : fraction (percent) of one angle that must be 'lit up' to be counted
-   smr  : smoothing radius of unsharp mask function.
-
->>>gassslice, datay, datax = getData('filepath')
->>>wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, wlen, smr, frac)
->>>hthets, hi, hj = window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)
->>>np.save('test_hi.npy', hi)
->>>np.save('test_hj.npy', hj)
->>>np.save('test_hthets.npy', hthets)
-
-
-
-==================================
 Directory Structure
 ==================================
-
 RHT:
 |__This README
 
-|__Updated rht.py python module
+|__The rht.py python module, based on fastrht.py for performing the Hough Transform
 
-|__Code based on fastrht.py for performing the Hough Transform
+|__Batches of Image files:
 
-|__Batches of image files and their computed outputs
+   |__Each image and their computed _xyt.npz, _backproj.npy, and _spectrum.npy outputs
 
-
-==================================
-Other Information
-==================================
 |__lrginput:
 
    |__Image files >1MB which may need to be divided
 
+|__Git version control information
+
+==================================
+Other Information
+==================================
 |__input:
 
    |__Manageable .fits,.npy,etc image files <1MB
