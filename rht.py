@@ -6,11 +6,14 @@
 #Imports
 #-----------------------------------------------------------------------------------------
 from __future__ import division
+from astropy.io import fits
+from scipy.stats import norm
+#from mpl_toolkits.mplot3d import Axes3D
+#from mayavi import mlab
+#from astropy import wcs
 import numpy as np
 import scipy.ndimage
 import math
-from astropy import wcs
-from astropy.io import fits
 import os
 import matplotlib.pyplot as plt
 import sys
@@ -31,7 +34,6 @@ SMR = 11.0 #smoothing radius of unsharp mask function
 '''
 
 '''
-
 #-----------------------------------------------------------------------------------------
 #Utility Functions
 #-----------------------------------------------------------------------------------------
@@ -52,7 +54,7 @@ def announce(strings):
 
 def update_progress(progress, message='Progress:'):
     #Create progress meter
-    length = TEXTWIDTH//2
+    length = 3*TEXTWIDTH//5
     messlen = TEXTWIDTH-(length+4)
     message = string.ljust(message, messlen)[:messlen]
     if 0.0 <= progress <= 1.0:
@@ -113,19 +115,21 @@ def putXYT(xyt_filename, hi, hj, hthets, compressed=True):
     else:
         np.savez(xyt_filename, hi=hi, hj=hj, hthets=hthets)
 
-def getXYT(xyt_filename, rebuild=False):    
+def getXYT(xyt_filename, rebuild=False, filepath = None):    
     #Reads in a .npz file containing coordinate pairs in data space (hi, hj)
     #And Hough space arrays covering theta space at each of those points
     data = np.load(str(xyt_filename))
     hi = data['hi']
     hj = data['hj']
     hthets = data['hthets']
-    if rebuild:
+    if rebuild and filepath is not None:
         #Can recreate an entire 3D array of mostly 0s
+        print 'Warning: Reconstructing very large array in memory...'
         data = getData(filepath)
-        imy, imx = data.shape
+        datay, datax = data.shape
         ntheta = len(hthets[0])
-        xyt = np.zeros((imy, imx, ntheta))
+        print 'Size:', datay, 'x', datax, 'x', ntheta
+        xyt = np.zeros((datay, datax, ntheta))
         coords = zip(hj, hi)
         for c in range(len(coords)):
             j,i = coords[c]
@@ -135,12 +139,44 @@ def getXYT(xyt_filename, rebuild=False):
         #Returns the sparse form only
         return hi, hj, hthets
 
+#TODO____________________________________________________________________________Bad values
+BAD_0 = True
+BAD_INF = True
+BAD_Neg = False  
 def bad_pixels(data):
     #Returns an array of the same shape as data
+    #NaN values MUST ALWAYS be considered bad.
     #Bad values become 1, all else become 0
-    #return np.isnan(data)
     data = np.array(data, np.float)
-    return np.logical_not(np.nan_to_num(data)) #(Nans or 0) ---> (0) ---> (1)
+
+    #infs = np.empty_like(data).fill(BAD_INF)
+    #zeros = np.empty_like(data).fill(BAD_0)
+    #negs = np.empty_like(data).fill(BAD_Neg)
+    if BAD_INF:
+        if BAD_0:
+            if BAD_Neg:
+                return np.logical_or(np.logical_not(np.isfinite(data)), np.less_equal(0.0))
+            else:    
+                return np.logical_or( np.logical_not( np.isfinite(data) ), np.logical_not(data) )
+        else:
+            if BAD_Neg:
+                return np.logical_or(np.logical_not(np.isfinite(data)), np.less(0.0))
+            else:    
+                return np.logical_not(np.isfinite(data))
+    else:
+        if BAD_0:
+            if BAD_Neg:
+                return np.logical_or(np.isnan(data), np.less_equal(0.0))
+            else:    
+                return np.logical_not(np.nan_to_num(data)) #(Nans or 0) ---> (0) ---> (1)
+        else:
+            if BAD_Neg:
+                return np.logical_or(np.isnan(data), np.less(0.0))
+            else:    
+                return np.isnan(data)
+    print 'Unable to properly mask data in bad_pixels()...'
+    return data.astype(np.bool)
+#TODO____________________________________________________________________________Bad values
 
 def all_within_diameter_are_good(data, diameter):
     r = int(np.floor(diameter/2))
@@ -219,11 +255,12 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
         nans = np.empty(data.shape, dtype=np.int).fill(np.nan)
         wlen_mask = all_within_diameter_are_good( np.where(smr_mask, data, nans), wlen)
 
+        '''
         datamin = np.nanmin(data)
         datamax = np.nanmax(data)
         datamean = np.nanmean(data)
         print 'Data File Info, Min:', datamin, 'Mean:', datamean, 'Max:', datamax
-
+        '''
         return data, smr_mask, wlen_mask
 
 #Performs a circle-cut of given diameter on inkernel.
@@ -238,7 +275,8 @@ def circ_kern(diameter):
 def umask(data, radius, smr_mask=None):
     kernel = circ_kern(2*radius)
     outdata = scipy.ndimage.filters.correlate(data, weights=kernel)
-    
+
+    #Correlation is the same as convolution here because kernel is symmetric 
     #Our convolution has scaled outdata by sum(kernel), so we will divide out these weights.
     kernweight = np.sum(np.sum(kernel, axis=0), axis=0)
     subtr_data = data - outdata/kernweight
@@ -290,7 +328,7 @@ def houghnew(img, theta=None, idl=False):
         theta = np.linspace(-np.pi / 2.0, np.pi / 2.0, 180)
     
     wy, wx = img.shape 
-    wmid = np.floor(wx/2.0)
+    wmid = np.floor(wx/2.0) #_____________________________________________TODO??
     
     if idl:
         ntheta = math.ceil((np.pi*np.sqrt(2.0)*((wx-1)/2.0)))  
@@ -338,7 +376,8 @@ def houghnew(img, theta=None, idl=False):
 
 
 def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask): 
-    update_progress(0.0, '3/4::')
+    message = '3/4:: Running RHT...'
+    update_progress(0.0, message)
     wcntr = int(np.floor(wlen/2))
 
     #Circular kernels
@@ -360,27 +399,23 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask):
     hjapp = Hj.append
     npsum = np.sum
 
-    coords = zip( *np.nonzero( np.logical_and( wlen_mask, smr_mask )))
+    #coords = zip( *np.nonzero( np.logical_and( wlen_mask, smr_mask )))
+    coords = zip( *np.nonzero( wlen_mask))
     for c in range(len(coords)):
         j,i = coords[c]
-        update_progress(c/(len(coords)-1), '3/4::')
-        try:
-            wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
-            h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
-            #________________________________________
-            #hout = h/h1 - frac #h, h1 are Length ntheta arrays and frac is a float
-            #hout[hout<0.0] = 0.0
-            #_____________________________________________________________________________________________TODO
-            hout = np.divide(h, h1) #np.true_divide(h, h1)
-            hout *= np.greater_equal(hout, frac)
-            #________________________________________
-            if any(hout):
-                htapp(hout)
-                hiapp(i)
-                hjapp(j)
-        except:
-            print 'Failure:', i, j, wcntr
-            raise
+        update_progress(c/(len(coords)-1), message)
+        #try:
+        wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
+        h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
+        hout = np.divide(h, h1) #TODO___________________?__________np.true_divide(h, h1)
+        hout *= np.greater_equal(hout, frac)
+        if any(hout):
+            htapp(hout)
+            hiapp(i)
+            hjapp(j)
+        #except:
+            #print 'Failure:', i, j, wcntr
+            ##raise
         #finally:
             #pass 
 
@@ -482,13 +517,11 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     #Backprojection only *Full Size* #Requires data
     data = getData(filepath)
-    imy, imx = data.shape
+    datay, datax = data.shape
     backproj = np.zeros_like(data)
     coords = zip(hi, hj)
     for c in range(len(coords)):
         backproj[coords[c][1]][coords[c][0]] = np.sum(hthets[c]) 
-    #for c in coords: #SLOW VERSION, EQUIVALENT TO ABOVE
-        #backproj[c[1]][c[0]] = np.sum(hthets[coords.index(c)]) 
     np.divide(backproj, np.sum(backproj), backproj)
     backproj_filename = filename + '_backproj.npy'
     np.save(backproj_filename, np.array(backproj))
@@ -512,7 +545,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     return: Boolean, if the function succeeded
     '''
-    #Makes sure relevant files are present!
+    #Makes sure relevant files are present!____________________
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
@@ -529,10 +562,11 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
             #Good to go! No interpretation needed!
             pass 
 
-    #Loads in relevant files
+    #Loads in relevant files___________________________________
     data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
-    imy, imx = data.shape
+    datay, datax = data.shape
     backproj = np.load(backproj_filename).astype(np.float)
+    spectrum = np.load(spectrum_filename).astype(np.float)
     
     def cleanup(all=False):
         plt.clf()
@@ -544,47 +578,92 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     print 'Whole Figure'
     fig, axes = plt.subplots(nrows=2, ncols=2)
-    log = np.where( np.isfinite(data), data, np.ones_like( data) ) 
+    log = np.log(np.where( np.isfinite(data), data, np.ones_like( data) )) 
     axes[0][0].imshow(log, cmap='gray')
-    axes[0][0].set_ylim([0, imy])
+    axes[0][0].set_ylim([0, datay])
     axes[0][0].set_title(filepath)
 
     #print 'Backproj free of bad values:', np.all(np.isfinite(backproj))
-    #back = np.where(wlen_mask, backproj, np.zeros_like(wlen_mask))
     axes[1][1].imshow(backproj, cmap='gray') #cmap='binary')
-    axes[1][1].set_ylim([0, imy])
+    axes[1][1].set_ylim([0, datay])
     axes[1][1].set_title(backproj_filename)
-
-    #axes[1][0].imshow(np.logical_and(smr_mask, wlen_mask), cmap='gray') #cmap='binary')
-    #axes[1][0].set_ylim([0, imy])
-    #axes[1][0].set_title('Mask')
-
+    
     masked_udata = umask(data, smr, smr_mask=smr_mask)
     axes[0][1].imshow(masked_udata, cmap='gray') #cmap='binary')
-    axes[0][1].set_ylim([0, imy])
+    axes[0][1].set_ylim([0, datay])
     axes[0][1].set_title('Sharpened')
 
+    g = 1
+    failure = True 
+    while failure and g<20:
+        try:
+            axes[1][0].plot(np.linspace(0.0, 180.0, num=len(spectrum), endpoint=False)[::g], spectrum[::g])
+            failure = False
+        except:
+            g += 1
+    '''
+    #---------------------------------------------------------------------------------------------------- 3D scatterplot
+    n = 5
+    steps = np.linspace(frac, 1.0, n, endpoint=True, retstep=False)
+    #cmap = 'hot'
+    #from  matplotlib.colors import BoundaryNorm
+    #norm = BoundaryNorm(steps, cmap.N, clip=True)
+
+    xyt_filename = filename + '_xyt.npz'
+    #hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
+    xyt = getXYT(xyt_filename, rebuild=True, filepath=filepath)
+    datay, datax, ntheta = xyt.shape
+    
+    for i in range(n-1):
+        low, high = steps[i], steps[i+1]
+        boolean = np.logical_and( np.greater_equal(xyt, low), np.less(xyt, high) )
+        (ys, xs, zs)  = np.nonzero(boolean)
+        #vectors = transpose((xs, ys, zs))
+        #s = 20*xyt[ys, xs,zs]
+
+        z_arr = np.zeros(ntheta)
+        for a in range(datay):
+            y = np.nonzero(np.equal(ys,a))
+            for b in range(datax):
+                x = np.nonzero(np.equal(xs,b))
+                j = []
+                for index in y:
+                    if index in x:
+                        j.append(index)
+                if len(j) > 0:
+                    j = np.array(j).astype(np.int)
+                    z_arr[-1, zs[j]] = xyt[a, b, zs[j]]
+                    z_arr = np.append(z_arr, np.zeros(ntheta), axis=0)
+
+        axes[1][0].scatter(xs, ys, z_arr) #cmap=cmap, norm=norm)
+        
+    axes[1][0].set_ylim([0, datay-1], auto=True)
+    axes[1][0].set_xlim([0, datax-1], auto=True)
+    axes[1][0].set_zlim([0, ntheta-1], auto=True)
+    axes[1][0].set_title('3D Scatterplot of ThetaRHT')
+    '''
+    #----------------------------------------------------------------------------------------------------
     plt.show(fig)
     #___________________________________TODO SAVE PLOT
-    del log, masked_udata
+    del masked_udata
     cleanup()
     
     print 'Backprojection'
     plt.subplot(121)
-    log = np.where( np.isfinite(data), data, np.ones_like( data) ) 
     plt.imshow(log, cmap='gray')
-    plt.ylim(0, imy)
+    plt.ylim(0, datay)
     plt.title(filepath)
     plt.subplot(122)
-    #plt.contour(backproj)
-    plt.imshow(backproj, cmap='binary')
-    plt.ylim(0, imy)
+    plt.contour(backproj)
+    #plt.imshow(backproj, cmap='binary')
+    plt.ylim(0, datay)
     plt.title(backproj_filename)
     plt.show()
     #___________________________________TODO SAVE PLOT
-    del log
+    del log, backproj
     cleanup()
     
+    '''
     print 'Theta Spectrum'
     spectrum = np.load(spectrum_filename)
     ntheta = len(spectrum)
@@ -592,6 +671,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     #___________________________________TODO SAVE PLOT
     plt.show()
     cleanup()
+    
 
     #Polar plot of theta power
     print 'Linearity'
@@ -600,6 +680,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     plt.polar(t, r)
     plt.show()
     cleanup()
+    '''
 
     #Clear all and exit successfully
     cleanup(all=True)
@@ -713,13 +794,16 @@ MULTIPLE ARGS:
     if len(sys.argv) == 1:
         #Displays the README file   
         README = 'README'
-        readme = open(README, 'r')
-        print readme.read(2000) #TODO
-        if len(readme.read(1)) == 1:
-            print ''
-            print '...see', README, 'for more information...'
-            print ''
-        readme.close()
+        try:
+            readme = open(README, 'r')
+            print readme.read(2000) #TODO
+            if len(readme.read(1)) == 1:
+                print ''
+                print '...see', README, 'for more information...'
+                print ''
+            readme.close()
+        except:
+            announce(help)
 
     elif len(sys.argv) == 2:
         #Parses input for single argument flags

@@ -19,6 +19,33 @@ import string
 import rht
 
 
+
+    xyt_filename = filename + '_xyt.npz'
+    xyt = getXYT(xyt_filename, rebuild=True, filepath=filepath)
+    imy, imx, ntheta = xyt.shape
+    k = 2.0*np.pi/float(ntheta)
+    def f(x_arr, y_arr, z_arr):
+        u_arr = v_arr = w_arr = np.zeros(len(z_arr))
+        thets = k*z_arr
+        u_arr = np.cos(thets)
+        v_arr = np.sin(thets)
+        return u_arr, v_arr, w_arr
+    (ys, xs, zs)  = np.nonzero(xyt)
+    u, v, w = f(xs, ys, zs)
+
+    mlab.quiver3d(xs, ys, zs, u, v, w, mask_points= 2, colormap = 'hot', scalars=xyt[ys, xs, zs]-frac, scale_factor = 1.0)
+    #mlab.outline()
+    #src = mlab.pipeline.vector_field(u, v, w)
+    #mlab.pipeline.vectors(src, mask_points=10, scale_factor=3.)
+    
+
+    
+    #screenshot = mlab.screenshot()
+    #axes[1][0].imshow(screenshot)
+    #mlab.clf()
+    #mlab.close()
+
+
     '''
     try:
         isZEA = filepath.endswith('.fits') and any(['ZEA' in x.upper() for x in [hdu.header['CTYPE1'], hdu.header['CTYPE2']] ])
