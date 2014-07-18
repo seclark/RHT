@@ -18,12 +18,13 @@ import os
 import matplotlib.pyplot as plt
 import sys
 import string
-
+import tempfile 
+import shutil
 
 #-----------------------------------------------------------------------------------------
 #Default Parameters
 #-----------------------------------------------------------------------------------------
-TEXTWIDTH = 60 #Width of some displayed text objects
+TEXTWIDTH = 80 #Width of some displayed text objects
 WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.70 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
 SMR = 11.0 #smoothing radius of unsharp mask function
@@ -31,9 +32,24 @@ SMR = 11.0 #smoothing radius of unsharp mask function
 #-----------------------------------------------------------------------------------------
 #Initialization
 #-----------------------------------------------------------------------------------------
-'''
+BUFFER = True #Gives the program permission to create a temporary directory for RHT data
+DTYPE = np.float32 #Single precision
+FILECAP = int(5e8) #Maximum number of BYTES allowed for a SINGLE buffer file. THERE CAN BE MULTIPLE BUFFER FILES!
+def buffershape(ntheta, filesize=FILECAP):
+    #Shape of maximum sized array that can fit into a SINGLE buffer file 
+    ntheta = int(ntheta)
+    filesize = int(filesize)
+    if not 0 < filesize <= FILECAP:
+        filesize = FILECAP
 
-'''
+    bits_per_element_in_bits = np.dtype(DTYPE).itemsize
+    bits_per_file_in_bits = size*8
+    elements_per_file_in_elements = int(bits_per_file_in_bits // bits_per_element_in_bits)
+    length_in_elements = int(elements_per_file_in_elements // ntheta)
+    if length_in_elements <= 0:
+        length_in_elements = 1
+
+    return (length_in_elements, ntheta) 
 #-----------------------------------------------------------------------------------------
 #Utility Functions
 #-----------------------------------------------------------------------------------------
@@ -91,6 +107,12 @@ def is_valid_file(filepath):
 
     return True
 
+def ntheta_w(w=WLEN):
+    #Returns the number of theta bins in each Hthet array
+
+    #Linearly proportional to wlen
+    return int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  #TODO_________________________________ntheta
+
 def center(filepath, shape=(500, 500)):
     #Returns a cutout from the center of the data
     data = getData(filepath)
@@ -118,26 +140,23 @@ def putXYT(xyt_filename, hi, hj, hthets, compressed=True):
 def getXYT(xyt_filename, rebuild=False, filepath = None):    
     #Reads in a .npz file containing coordinate pairs in data space (hi, hj)
     #And Hough space arrays covering theta space at each of those points
-    data = np.load(str(xyt_filename))
-    hi = data['hi']
-    hj = data['hj']
-    hthets = data['hthets']
+    data = np.load(xyt_filename, mmap_mode='r') #Allows for reading in very large files!
     if rebuild and filepath is not None:
         #Can recreate an entire 3D array of mostly 0s
         print 'Warning: Reconstructing very large array in memory...'
         data = getData(filepath)
         datay, datax = data.shape
-        ntheta = len(hthets[0])
+        ntheta = len(data['hthets'][0])
         print 'Size:', datay, 'x', datax, 'x', ntheta
         xyt = np.zeros((datay, datax, ntheta))
-        coords = zip(hj, hi)
+        coords = zip(data['hj'], data['hi'])
         for c in range(len(coords)):
             j,i = coords[c]
-            xyt[j][i] = hthets[c]
+            xyt[j][i] = data['hthets'][c]
         return xyt
     else:
         #Returns the sparse form only
-        return hi, hj, hthets
+        return data['hi'], data['hj'], data['hthets']
 
 #TODO____________________________________________________________________________Bad values
 BAD_0 = True
@@ -148,10 +167,8 @@ def bad_pixels(data):
     #NaN values MUST ALWAYS be considered bad.
     #Bad values become 1, all else become 0
     data = np.array(data, np.float)
-
-    #infs = np.empty_like(data).fill(BAD_INF)
-    #zeros = np.empty_like(data).fill(BAD_0)
-    #negs = np.empty_like(data).fill(BAD_Neg)
+    
+    #IMPLEMENTATION1: Do Comparisons which are VERY different depending on boolean choices 
     if BAD_INF:
         if BAD_0:
             if BAD_Neg:
@@ -174,9 +191,21 @@ def bad_pixels(data):
                 return np.logical_or(np.isnan(data), np.less(0.0))
             else:    
                 return np.isnan(data)
+    '''
+    #IMPLEMENTATION2: Map values determined by flags into the data array
+    not_that = np.zeros_like(data)
+    infs = np.empty_like(data).fill(BAD_INF)
+    zeros = np.empty_like(data).fill(BAD_0)
+    negs = np.empty_like(data).fill(BAD_Neg)
+    
+    isinf = np.where(np.isinf(data), infs, not_that)
+    iszero = np.where(np.logical_not(data), zeros, not_that)
+    isneg = np.where(np.less(0.0), negs, not_that)
+    return np.logical_or(np.isnan(data), np.logical_or(isinf, np.logical_or(iszero, isneg)))
+    '''
+    #IMPLEMENTATION3: Give up?
     print 'Unable to properly mask data in bad_pixels()...'
     return data.astype(np.bool)
-#TODO____________________________________________________________________________Bad values
 
 def all_within_diameter_are_good(data, diameter):
     r = int(np.floor(diameter/2))
@@ -331,7 +360,7 @@ def houghnew(img, theta=None, idl=False):
     wmid = np.floor(wx/2.0) #_____________________________________________TODO??
     
     if idl:
-        ntheta = math.ceil((np.pi*np.sqrt(2.0)*((wx-1)/2.0)))  
+        ntheta = ntheta_w(wx)
         theta = np.linspace(0, np.pi, ntheta)
 
     # compute the vertical bins (the distances)
@@ -375,7 +404,7 @@ def houghnew(img, theta=None, idl=False):
     return out, theta, bins
 
 
-def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask): 
+def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename): 
     message = '3/4:: Running RHT...'
     update_progress(0.0, message)
     wcntr = int(np.floor(wlen/2))
@@ -391,6 +420,7 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask):
     h1 = fast_hough(wkernel, xyt, ntheta) #Length ntheta array
     dcube = np.repeat(masked_udata[:,:,np.newaxis], repeats=ntheta, axis=2)
 
+    #Local function calls are faster than globals
     Hthets = []
     Hi = []
     Hj = []
@@ -399,27 +429,70 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask):
     hjapp = Hj.append
     npsum = np.sum
 
-    #coords = zip( *np.nonzero( np.logical_and( wlen_mask, smr_mask )))
+    if BUFFER:
+        #Preparing to write hout to file during operation so it does not over-fill RAM
+        temp_dir = tempfile.mkdtemp()
+        temp_files = [] #List of memmap objects
+        buffer_shape = buffershape(ntheta) #variable_length, ntheta
+        def next_temp_filename():
+            return path.join(temp_dir, +'rht'+ str(len(temp_files)) + '.dat')
+
+        def concat_along_axis_0(memmap_list):
+            big_memmap = #TODO __________________________________________________________________________________________________________
+            for temp_file in memmap_list:
+                temp_file.flush()         
+                temp_file.close()        
+                del temp_file 
+            return big_memmap
+
+    #Number of RHT operations that will be performed, and their coordinates
     coords = zip( *np.nonzero( wlen_mask))
-    for c in range(len(coords)):
-        j,i = coords[c]
-        update_progress(c/(len(coords)-1), message)
+    N = len(coords)
+    for c in range(N):
         #try:
+        j,i = coords[c]
         wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
         h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
-        hout = np.divide(h, h1) #TODO___________________?__________np.true_divide(h, h1)
+        hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
         hout *= np.greater_equal(hout, frac)
         if any(hout):
             htapp(hout)
             hiapp(i)
             hjapp(j)
+        
+        if BUFFER and len(Hthets) == buffer_shape[0]:
+            temp_files.append( np.memmap( next_temp_filename(), dtype=DTYPE, mode='w+', shape=buffer_shape )) #Creates full memmap object
+            theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
+            temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
+            Hthets = [] #Reset Hthets
+        elif BUFFER and c == N-1 and len(Hthets) > 0:
+            temp_files.append( np.memmap( next_temp_filename(), dtype=DTYPE, mode='w+', shape=(len(Hthets), ntheta)  )) #Creates small memmap object
+            theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
+            temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
+            Hthets = [] #Reset Hthets
+
+        update_progress(c/float(N-1), message)
         #except:
             #print 'Failure:', i, j, wcntr
             ##raise
         #finally:
             #pass 
 
-    return np.array(Hthets), np.array(Hi), np.array(Hj)
+    if BUFFER:
+        converted_hthets = concat_along_axis_0(temp_files) #Combines memmap objects sequentially
+        for temp_file in temp_files: #May not be necessary if concat can digest and delete these.
+            temp_file.flush()        # 
+            temp_file.close()        #
+            del temp_file            #
+        putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets) #Saves data
+        converted_hthets.flush()
+        converted_hthets.close()
+        del converted_hthets
+        shutil.rmtree(temp_dir)
+    else:
+        putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets)) #Saves data
+
+    return True
 
 #-----------------------------------------------------------------------------------------
 #Interactive Functions
@@ -459,16 +532,14 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
         print '2/4::', 'Size:', str(datax)+'x'+str(datay), 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)
         
-        ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0))) #TODO_______________ntheta
+        ntheta = ntheta_w(wlen) #TODO_______________ntheta
         theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
 
-        hthets, hi, hj = window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask) #TODO__________________
+        success = window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename) #TODO__________________
         
 
-        putXYT(xyt_filename, hi, hj, hthets)
-
         print '4/4:: Successfully Saved Data As', xyt_filename
-        return True
+        return success
     
     except:
         raise #__________________________________________________________________________________________________________ Raise
