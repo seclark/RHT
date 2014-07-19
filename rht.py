@@ -438,12 +438,50 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
             return path.join(temp_dir, +'rht'+ str(len(temp_files)) + '.dat')
 
         def concat_along_axis_0(memmap_list):
-            big_memmap = #TODO __________________________________________________________________________________________________________
-            for temp_file in memmap_list:
-                temp_file.flush()         
-                temp_file.close()        
-                del temp_file 
-            return big_memmap
+            #Combines memmap objects of the same shape, except along axis 0,
+            #BY LEAVING THEM ALL ON DISK AN APPENDING THEM SEQUENTIALLY
+            if len(memmap_list) == 1:
+                return memmap_list[0]
+            
+            else:
+                '''
+                #IMPLEMENTATION1: Make a new large memmapped file and sequentially dump data in
+                lengths = [memmap.shape[0] for memmap in memmap_list]
+                shapes = [memmap.shape[1:] for memmap in memmap_list]
+                assert all([x==shapes[0] for x in shapes[1:]])
+
+                big_memmap = np.memmap(path.join(temp_dir, +'rht.dat'), dtype=DTYPE, mode='r+', shape=(sum(lengths), *shapes[0])  )   #TODO ______________________________________________________
+                lengths.insert(0, sum(lengths))
+                for i in range(len(memmap_list)):
+                    temp_file = memmap_list[i]
+                    big_memmap[ sum(lengths[0:i]) : sum(lengths[0:i+1])-1, ...] = tempfile[:, ...]
+                    temp_file.flush()         
+                    temp_file.close()        
+                    del temp_file 
+                return big_memmap
+                '''
+                #IMPLEMENTATION2: Append data to first given memmaped file, then delete and repeat
+                seed = memmap_list[0]
+                others = memmap_list[1:]
+                lengths = [memmap.shape[0] for memmap in others]
+                shapes = [memmap.shape[1:] for memmap in others]
+                assert all([x==seed.shape[1:] for x in shapes])
+                
+                bits_per_element_in_bits = np.dtype(DTYPE).itemsize
+                elements_per_shape_in_elements = np.multiply.reduce(seed.shape[1:])
+                bytes_per_shape_in_bytes = elements_per_shape_in_elements * bits_per_element_in_bits // 8
+
+                def append_memmaps(a, b):
+                    path = b.filename
+                    c = np.memmap(a.filename, dtype=DTYPE, mode='r+', offset=bytes_per_shape_in_bytes*a.shape[0], shape=(b.shape[0], *seed.shape[1:]) )
+                    c[:,...] = b[:,...] #Depends on offset correctly allocating new space at end of file
+                    b.flush()         
+                    b.close()        
+                    del b
+                    #os.remove(path) #CAN BE DONE LATER, BUT...
+                    return c 
+
+                return reduce(append_memmaps, others, initializer=seed)
 
     #Number of RHT operations that will be performed, and their coordinates
     coords = zip( *np.nonzero( wlen_mask))
@@ -480,10 +518,10 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
 
     if BUFFER:
         converted_hthets = concat_along_axis_0(temp_files) #Combines memmap objects sequentially
-        for temp_file in temp_files: #May not be necessary if concat can digest and delete these.
-            temp_file.flush()        # 
-            temp_file.close()        #
-            del temp_file            #
+        #for temp_file in temp_files: #May not be necessary if concat can digest and delete these.
+            #temp_file.flush()        # 
+            #temp_file.close()        #
+            #del temp_file            #
         putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets) #Saves data
         converted_hthets.flush()
         converted_hthets.close()
