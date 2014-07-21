@@ -24,7 +24,7 @@ import shutil
 #-----------------------------------------------------------------------------------------
 #Default Parameters
 #-----------------------------------------------------------------------------------------
-TEXTWIDTH = 80 #Width of some displayed text objects
+TEXTWIDTH = 70 #Width of some displayed text objects
 WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.70 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
 SMR = 11.0 #smoothing radius of unsharp mask function
@@ -32,24 +32,17 @@ SMR = 11.0 #smoothing radius of unsharp mask function
 #-----------------------------------------------------------------------------------------
 #Initialization
 #-----------------------------------------------------------------------------------------
+
+#Allows processing of larger files than RAM alone would allow
 BUFFER = True #Gives the program permission to create a temporary directory for RHT data
 DTYPE = np.float32 #Single precision
 FILECAP = int(5e8) #Maximum number of BYTES allowed for a SINGLE buffer file. THERE CAN BE MULTIPLE BUFFER FILES!
-def buffershape(ntheta, filesize=FILECAP):
-    #Shape of maximum sized array that can fit into a SINGLE buffer file 
-    ntheta = int(ntheta)
-    filesize = int(filesize)
-    if not 0 < filesize <= FILECAP:
-        filesize = FILECAP
 
-    bits_per_element_in_bits = np.dtype(DTYPE).itemsize
-    bits_per_file_in_bits = size*8
-    elements_per_file_in_elements = int(bits_per_file_in_bits // bits_per_element_in_bits)
-    length_in_elements = int(elements_per_file_in_elements // ntheta)
-    if length_in_elements <= 0:
-        length_in_elements = 1
+#Excluded Data Types _______#TODO
+BAD_0 = True
+BAD_INF = True
+BAD_Neg = False 
 
-    return (length_in_elements, ntheta) 
 #-----------------------------------------------------------------------------------------
 #Utility Functions
 #-----------------------------------------------------------------------------------------
@@ -158,10 +151,7 @@ def getXYT(xyt_filename, rebuild=False, filepath = None):
         #Returns the sparse form only
         return data['hi'], data['hj'], data['hthets']
 
-#TODO____________________________________________________________________________Bad values
-BAD_0 = True
-BAD_INF = True
-BAD_Neg = False  
+ 
 def bad_pixels(data):
     #Returns an array of the same shape as data
     #NaN values MUST ALWAYS be considered bad.
@@ -403,6 +393,78 @@ def houghnew(img, theta=None, idl=False):
 
     return out, theta, bins
 
+def theta_rht(theta_array):
+    #Maps an XYT cube into a 2D Array of angles- weighted by their significance
+    thetas = np.linspace(0.0, np.pi, len(theta_array), endpoint=False, retstep=False)
+    ys = theta_array*np.sin(2.0*thetas)
+    xs = theta_array*np.cos(2.0*thetas)
+    angle = 0.5*np.arctan2(np.sum(ys), np.sum(xs)) #EQUATION (7)
+    return np.pi-math.fmod(angle+np.pi, np.pi) #EQUATION (8) #TODO __________________________________________Is this correct?
+
+def buffershape(ntheta, filesize=FILECAP):
+    #Shape of maximum sized array that can fit into a SINGLE buffer file 
+    ntheta = int(ntheta)
+    filesize = int(filesize)
+    if not 0 < filesize <= FILECAP:
+        print 'Chosen buffer size exceeds existing limit. Rest to', str(FILECAP), 'Bytes...'
+        filesize = FILECAP
+
+    bits_per_element_in_bits = np.dtype(DTYPE).itemsize
+    bits_per_file_in_bits = filesize*8
+    elements_per_file_in_elements = int(bits_per_file_in_bits // bits_per_element_in_bits)
+    length_in_elements = int(elements_per_file_in_elements // ntheta)
+    if length_in_elements <= 0:
+        print 'In buffershape, ntheta has forced your buffer filesize to become larger than', filesize, 'Bytes...'
+        length_in_elements = 1
+
+    return (length_in_elements, ntheta) 
+
+def concat_along_axis_0(memmap_list):
+    #Combines memmap objects of the same shape, except along axis 0,
+    #BY LEAVING THEM ALL ON DISK AN APPENDING THEM SEQUENTIALLY
+    if len(memmap_list) == 1:
+        return memmap_list[0]
+    
+    else:
+        '''
+        #IMPLEMENTATION1: Make a new large memmapped file and sequentially dump data in
+        lengths = [memmap.shape[0] for memmap in memmap_list]
+        shapes = [memmap.shape[1:] for memmap in memmap_list]
+        assert all([x==shapes[0] for x in shapes[1:]])
+
+        big_memmap = np.memmap(os.path.join(temp_dir, +'rht.dat'), dtype=DTYPE, mode='r+', shape=(sum(lengths), *shapes[0])  )   #TODO ______________________________________________________
+        lengths.insert(0, sum(lengths))
+        for i in range(len(memmap_list)):
+            temp_file = memmap_list[i]
+            big_memmap[ sum(lengths[0:i]) : sum(lengths[0:i+1])-1, ...] = tempfile[:, ...]
+            temp_file.flush()         
+            temp_file.close()        
+            del temp_file 
+        return big_memmap
+        '''
+        #IMPLEMENTATION2: Append data to first given memmaped file, then delete and repeat
+        seed = memmap_list[0]
+        others = memmap_list[1:]
+        lengths = [memmap.shape[0] for memmap in others]
+        shapes = [memmap.shape[1:] for memmap in others]
+        assert all([x==seed.shape[1:] for x in shapes])
+        
+        bits_per_element_in_bits = np.dtype(DTYPE).itemsize
+        elements_per_shape_in_elements = np.multiply.reduce(seed.shape[1:])
+        bytes_per_shape_in_bytes = elements_per_shape_in_elements * bits_per_element_in_bits // 8
+
+        def append_memmaps(a, b):
+            path = b.filename
+            tempshape = b.shape #(b.shape[0], *seed.shape[1:])
+            c = np.memmap(a.filename, dtype=DTYPE, mode='r+', offset=bytes_per_shape_in_bytes*a.shape[0], shape=tempshape )
+            c[:,...] = b[:,...] #Depends on offset correctly allocating new space at end of file
+            b.flush()         
+            b.close()        
+            del b
+            #os.remove(path) #CAN BE DONE LATER, BUT...
+            return c 
+
+        return reduce(append_memmaps, others, initializer=seed)
 
 def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename): 
     message = '3/4:: Running RHT...'
@@ -435,53 +497,8 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
         temp_files = [] #List of memmap objects
         buffer_shape = buffershape(ntheta) #variable_length, ntheta
         def next_temp_filename():
-            return path.join(temp_dir, +'rht'+ str(len(temp_files)) + '.dat')
+            return os.path.join(temp_dir, 'rht'+ str(len(temp_files)) + '.dat')
 
-        def concat_along_axis_0(memmap_list):
-            #Combines memmap objects of the same shape, except along axis 0,
-            #BY LEAVING THEM ALL ON DISK AN APPENDING THEM SEQUENTIALLY
-            if len(memmap_list) == 1:
-                return memmap_list[0]
-            
-            else:
-                '''
-                #IMPLEMENTATION1: Make a new large memmapped file and sequentially dump data in
-                lengths = [memmap.shape[0] for memmap in memmap_list]
-                shapes = [memmap.shape[1:] for memmap in memmap_list]
-                assert all([x==shapes[0] for x in shapes[1:]])
-
-                big_memmap = np.memmap(path.join(temp_dir, +'rht.dat'), dtype=DTYPE, mode='r+', shape=(sum(lengths), *shapes[0])  )   #TODO ______________________________________________________
-                lengths.insert(0, sum(lengths))
-                for i in range(len(memmap_list)):
-                    temp_file = memmap_list[i]
-                    big_memmap[ sum(lengths[0:i]) : sum(lengths[0:i+1])-1, ...] = tempfile[:, ...]
-                    temp_file.flush()         
-                    temp_file.close()        
-                    del temp_file 
-                return big_memmap
-                '''
-                #IMPLEMENTATION2: Append data to first given memmaped file, then delete and repeat
-                seed = memmap_list[0]
-                others = memmap_list[1:]
-                lengths = [memmap.shape[0] for memmap in others]
-                shapes = [memmap.shape[1:] for memmap in others]
-                assert all([x==seed.shape[1:] for x in shapes])
-                
-                bits_per_element_in_bits = np.dtype(DTYPE).itemsize
-                elements_per_shape_in_elements = np.multiply.reduce(seed.shape[1:])
-                bytes_per_shape_in_bytes = elements_per_shape_in_elements * bits_per_element_in_bits // 8
-
-                def append_memmaps(a, b):
-                    path = b.filename
-                    c = np.memmap(a.filename, dtype=DTYPE, mode='r+', offset=bytes_per_shape_in_bytes*a.shape[0], shape=(b.shape[0], *seed.shape[1:]) )
-                    c[:,...] = b[:,...] #Depends on offset correctly allocating new space at end of file
-                    b.flush()         
-                    b.close()        
-                    del b
-                    #os.remove(path) #CAN BE DONE LATER, BUT...
-                    return c 
-
-                return reduce(append_memmaps, others, initializer=seed)
 
     #Number of RHT operations that will be performed, and their coordinates
     coords = zip( *np.nonzero( wlen_mask))
@@ -524,9 +541,9 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
             #del temp_file            #
         putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets) #Saves data
         converted_hthets.flush()
-        converted_hthets.close()
+        #converted_hthets.close() #Did not work?
         del converted_hthets
-        shutil.rmtree(temp_dir)
+        #shutil.rmtree(temp_dir) #Did not work!?
     else:
         putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets)) #Saves data
 
@@ -606,7 +623,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing:
         #Runs rht(filepath), since that has not been done
-        rht(filepath, force=force, wlen=wlen, frac=frac, smr=smr)       #TODO FORCE__________
+        rht(filepath, force=force, wlen=wlen, frac=frac, smr=smr) 
     else:
         if force:
             #Runs rht(filepath), even if it has been done
@@ -620,7 +637,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
 
     #Spectrum *Length ntheta array of theta power (above the threshold) for whole data*
-    spectrum = [np.sum(theta) for theta in hthets] #TODO_____________________________________Counts instead of Sum?? #np.count_nonzero(theta)
+    spectrum = [np.sum(theta) for theta in hthets]
     spectrum_filename = filename + '_spectrum.npy'
     np.save(spectrum_filename, np.array(spectrum))
 
@@ -635,7 +652,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     backproj_filename = filename + '_backproj.npy'
     np.save(backproj_filename, np.array(backproj))
 
-    print 'Success'
+    print 'Interpreting... Success'
     return True
 
     
@@ -662,7 +679,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing:
         #Interprets file, since that has not been done
-        interpret(filepath, force=force, wlen=wlen, frac=frac, smr=smr)  #TODO FORCE__________
+        interpret(filepath, force=force, wlen=wlen, frac=frac, smr=smr) 
     else:
         if force:
             #Interprets file, even if it has been done
@@ -673,10 +690,10 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     #Loads in relevant files___________________________________
     data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
-    datay, datax = data.shape
     backproj = np.load(backproj_filename).astype(np.float)
     spectrum = np.load(spectrum_filename).astype(np.float)
-    
+    datay, datax = data.shape
+
     def cleanup(all=False):
         plt.clf()
         plt.cla()
