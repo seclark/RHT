@@ -8,15 +8,20 @@ This is the Rolling Hough Transform, described in Clark, Peek, Putman 2014 (arXi
 Requirements (Python 2.7 Only)
 ==================================
 from __future__ import division
+from astropy.io import fits
+#from scipy.stats import norm
+#from mpl_toolkits.mplot3d import Axes3D
+#from mayavi import mlab
+#from astropy import wcs
 import numpy as np
 import scipy.ndimage
 import math
-from astropy import wcs
-from astropy.io import fits
 import os
 import matplotlib.pyplot as plt
 import sys
 import string
+import tempfile 
+import shutil
 
 ==================================
 Instructions For Use (Python)

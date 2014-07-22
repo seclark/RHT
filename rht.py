@@ -7,7 +7,7 @@
 #-----------------------------------------------------------------------------------------
 from __future__ import division
 from astropy.io import fits
-from scipy.stats import norm
+#from scipy.stats import norm
 #from mpl_toolkits.mplot3d import Axes3D
 #from mayavi import mlab
 #from astropy import wcs
@@ -22,16 +22,18 @@ import tempfile
 import shutil
 
 #-----------------------------------------------------------------------------------------
-#Default Parameters
+#Initialization 1 of 3: Calculation Parameters
 #-----------------------------------------------------------------------------------------
-TEXTWIDTH = 70 #Width of some displayed text objects
+
 WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.70 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
-SMR = 11.0 #smoothing radius of unsharp mask function
+SMR = 15.0 #smoothing radius of unsharp mask function
 
 #-----------------------------------------------------------------------------------------
-#Initialization
+#Initialization 2 of 3: Runtime Parameters
 #-----------------------------------------------------------------------------------------
+
+TEXTWIDTH = 70 #Width of some displayed text objects
 
 #Allows processing of larger files than RAM alone would allow
 BUFFER = True #Gives the program permission to create a temporary directory for RHT data
@@ -90,11 +92,11 @@ def is_valid_file(filepath):
 
     return: Boolean, True ONLY when the data could have rht() applied successfully
     '''
-    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy'] #TODO___More Endings
+    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy', '_plot.png'] #TODO___More Endings
     if any([filepath.endswith(e) for e in excluded_file_endings]):
         return False
     
-    excluded_file_content = ['_xyt', '_backproj', '_spectrum'] #TODO___More Exclusions
+    excluded_file_content = ['_xyt', '_backproj', '_spectrum', '_plot'] #TODO___More Exclusions
     if any([e in filepath for e in excluded_file_content]):
         return False
 
@@ -148,7 +150,7 @@ def getXYT(xyt_filename, rebuild=False, filepath = None):
             xyt[j][i] = data['hthets'][c]
         return xyt
     else:
-        #Returns the sparse form only
+        #Returns the sparse, memory mapped form only
         return data['hi'], data['hj'], data['hthets']
 
  
@@ -312,6 +314,9 @@ def umask(data, radius, smr_mask=None):
         return np.where(smr_mask, bindata, smr_mask) 
 
 def fast_hough(in_arr, xyt, ntheta):
+    if in_arr.ndim != 2 or xyt.ndim != 3:
+        raise ValueError('fast_hough failure because of input dimensions!')
+
     incube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)
     out = np.sum(np.sum(incube*xyt,axis=0), axis=0)
     
@@ -324,6 +329,14 @@ def all_thetas(window, thetbins):
     #Makes prism; output has dimensions (x, y, theta)
     out = np.zeros((wy, wx, ntheta), np.int)
     
+    for (j, i) in zip( *np.nonzero(window)):
+        #At each x/y value, create new single-pixel data
+        w_1 = np.zeros((wy, wx), np.float_)
+        w_1[j,i] = 1
+        H, thets, dist = houghnew(w_1, thetbins) 
+        out[j, i, :] = H[np.floor(len(dist)/2), :]
+
+    '''
     for i in xrange(wx):
         for j in xrange(wy):
             #At each x/y value, create new single-pixel data
@@ -334,32 +347,31 @@ def all_thetas(window, thetbins):
                 w_1[j,i] = 1
        
                 H, thets, dist = houghnew(w_1, thetbins) 
-                rel = H[np.floor(len(dist)/2), :] 
-                out[j, i, :] = rel
-      
+                #rel = H[np.floor(len(dist)/2), :] 
+                #out[j, i, :] = rel
+                out[j, i, :] = H[np.floor(len(dist)/2), :] 
+    '''
     return out    
 
-def houghnew(img, theta=None, idl=False):
-    if img.ndim != 2:
+def houghnew(image, theta=None):
+    if image.ndim != 2:
         raise ValueError('The input data must be 2-D')
 
     if theta is None:
         theta = np.linspace(-np.pi / 2.0, np.pi / 2.0, 180)
-    
-    wy, wx = img.shape 
+
+    if theta.ndim != 1:
+        raise ValueError('The input data must be 2-D')
+
+    wy, wx = image.shape 
     wmid = np.floor(wx/2.0) #_____________________________________________TODO??
-    
-    if idl:
-        ntheta = ntheta_w(wx)
-        theta = np.linspace(0, np.pi, ntheta)
 
     # compute the vertical bins (the distances)
-    d = np.ceil(np.hypot(*img.shape))
-    nr_bins = d
-    bins = np.linspace(-d/2, d/2, nr_bins)
+    nr_bins = np.ceil(np.hypot(*image.shape))
+    bins = np.linspace(-nr_bins/2, nr_bins/2, int(nr_bins)) #TODO___________________endpoint=False?
 
     # allocate the output data
-    out = np.zeros((nr_bins, len(theta)), dtype=np.uint64)
+    out = np.zeros((int(nr_bins), len(theta)), dtype=np.uint64) #TODO______ uint664 datatype?
 
     # precompute the sin and cos of the angles
     cos_theta = np.cos(theta)
@@ -367,7 +379,7 @@ def houghnew(img, theta=None, idl=False):
 
     # find the indices of the non-zero values in
     # the input data
-    y, x = np.nonzero(img)
+    y, x = np.nonzero(image)
 
     # x and y can be large, so we can't just broadcast to 2D
     # arrays as we may run out of memory. Instead we process
@@ -385,7 +397,7 @@ def houghnew(img, theta=None, idl=False):
         indices = shifted.astype(np.int)
         
         # use bin count to accumulate the coefficients
-        bincount = np.bincount(indices)
+        bincount = np.bincount(indices) #TODO______________________ bincount method?
 
         # finally assign the proper values to the out array
         out[:len(bincount), i] = bincount
@@ -398,21 +410,21 @@ def theta_rht(theta_array, uv=False):
     thetas = np.linspace(0.0, np.pi, len(theta_array), endpoint=False, retstep=False)
     ys = theta_array*np.sin(2.0*thetas)
     xs = theta_array*np.cos(2.0*thetas)    
+    rough_angle = 0.5*np.arctan2(np.sum(ys), np.sum(xs)) #EQUATION (7)
+    angle = np.pi-math.fmod(rough_angle+np.pi, np.pi) #EQUATION (8) #TODO __________________________________________Is this correct?
     if not uv:
-        angle = 0.5*np.arctan2(np.sum(ys), np.sum(xs)) #EQUATION (7)
-        return np.pi-math.fmod(angle+np.pi, np.pi) #EQUATION (8) #TODO __________________________________________Is this correct?
-    
+        return angle
+    else:
+        return angle, np.cos(angle), np.sin(angle)
     #OR It can map all arrays to the vector (x, y) of theta power at one point
     #MADE FOR USE WITH plt.quiver() #TODO
-    else:
-        return np.sum(xs), np.sum(ys)
 
 def buffershape(ntheta, filesize=FILECAP):
     #Shape of maximum sized array that can fit into a SINGLE buffer file 
     ntheta = int(ntheta)
     filesize = int(filesize)
     if not 0 < filesize <= FILECAP:
-        print 'Chosen buffer size exceeds existing limit. Rest to', str(FILECAP), 'Bytes...'
+        print 'Chosen buffer size exceeds existing limit. Reset to', str(FILECAP), 'Bytes'
         filesize = FILECAP
 
     bits_per_element_in_bits = np.dtype(DTYPE).itemsize
@@ -420,7 +432,7 @@ def buffershape(ntheta, filesize=FILECAP):
     elements_per_file_in_elements = int(bits_per_file_in_bits // bits_per_element_in_bits)
     length_in_elements = int(elements_per_file_in_elements // ntheta)
     if length_in_elements <= 0:
-        print 'In buffershape, ntheta has forced your buffer filesize to become larger than', filesize, 'Bytes...'
+        print 'In buffershape, ntheta has forced your buffer size to become larger than', filesize, 'Bytes'
         length_in_elements = 1
 
     return (length_in_elements, ntheta) 
@@ -527,7 +539,7 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
         buffer_shape = buffershape(ntheta) #variable_length, ntheta
         def next_temp_filename():
             return os.path.join(temp_dir, 'rht'+ str(len(temp_files)) + '.dat')
-        print 'Temporary file', temp_dir, 'prepared and ready to hold buffered data.'
+        #print 'Temporary files in:', temp_dir 
 
         #Number of RHT operations that will be performed, and their coordinates
         coords = zip( *np.nonzero( wlen_mask))
@@ -555,12 +567,13 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
             theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
             temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
 
-        print 'Converting list of buffered hthet arrays into final XYT cube'
+        #print 'Converting list of buffered hthet arrays into final XYT cube'
         converted_hthets = concat_along_axis_0(temp_files) #Combines memmap objects sequentially
         putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets) #Saves data
         converted_hthets.flush()
         #converted_hthets.close() #Did not work?
         del converted_hthets
+
         
         try:
             for obj in os.listdir(temp_dir):
@@ -568,7 +581,7 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
                 del obj
             shutil.rmtree(temp_dir) #Did not work!?
         except:
-            print 'Deletion of files in', temp_dir, 'was not successful... Sorry!'
+            print 'Failed to delete files in:', temp_dir
         finally:
             return True
             
@@ -697,9 +710,10 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     #Makes sure relevant files are present!____________________
     filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+    xyt_filename = filename + '_xyt.npz'
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
-    required_files = [backproj_filename, spectrum_filename]
+    required_files = [backproj_filename, spectrum_filename, xyt_filename]
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing:
         #Interprets file, since that has not been done
@@ -712,47 +726,105 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
             #Good to go! No interpretation needed!
             pass 
 
-    #Loads in relevant files___________________________________
+    #Loads in relevant files and data___________________________________
     data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
     backproj = np.load(backproj_filename).astype(np.float)
     spectrum = np.load(spectrum_filename).astype(np.float)
+    hi, hj, hthets = getXYT(xyt_filename)
+
+    #Gather parameters from that data
+    ntheta = len(spectrum)
     datay, datax = data.shape
 
-    def cleanup(all=False):
+    #Produce Specific Plots
+    masked_udata = umask(data, smr, smr_mask=smr_mask)
+    log = np.log(np.where( np.isfinite(data), data, np.ones_like( data) )) #TODO Warnings?
+    U = np.zeros_like(hi)
+    V = np.zeros_like(hj)
+    C = np.zeros((len(U)), dtype=np.float)
+    coords = zip(hi, hj)
+    for c in range(len(coords)):
+        C[c], U[c], V[c] = theta_rht(hthets[c], uv=True)
+    C /= np.pi 
+    C *= np.isfinite(C)
+
+    #Define Convenience Functions
+    def cleanup():
         plt.clf()
         plt.cla()
-        if all:
-            plt.close('all')
-        else:
-            plt.close()
+        plt.close()
 
-    print 'Whole Figure'
+    #---------------------------------------------------------------------- PLOT 1
+    print 'Plotting Whole Figure...'
     fig, axes = plt.subplots(nrows=2, ncols=2)
-    log = np.log(np.where( np.isfinite(data), data, np.ones_like( data) )) 
+    
+    #### Log-scale plot of original image data
     axes[0][0].imshow(log, cmap='gray')
     axes[0][0].set_ylim([0, datay])
     axes[0][0].set_title(filepath)
 
-    #print 'Backproj free of bad values:', np.all(np.isfinite(backproj))
+    #### Backprojection of RHT data
     axes[1][1].imshow(backproj, cmap='gray') #cmap='binary')
     axes[1][1].set_ylim([0, datay])
     axes[1][1].set_title(backproj_filename)
     
-    masked_udata = umask(data, smr, smr_mask=smr_mask)
+    #### Masked Image
     axes[0][1].imshow(masked_udata, cmap='gray') #cmap='binary')
     axes[0][1].set_ylim([0, datay])
     axes[0][1].set_title('Sharpened')
 
-    g = 1
-    failure = True 
-    while failure and g<20:
-        try:
-            axes[1][0].plot(np.linspace(0.0, 180.0, num=len(spectrum), endpoint=False)[::g], spectrum[::g])
-            failure = False
-        except:
-            g += 1
+    #### Quiver plot of theta<RHT> across the image
+    #reduction = 2 
+    #axes[1][0].quiver(hi[::reduction], hj[::reduction], U[::reduction], V[::reduction], C[::reduction], pivot='middle')
+    error = 0.1
+    lowrange = np.logical_and(np.greater(C, error), np.less(C, 0.5-error))
+    highrange = np.logical_and(np.greater(C, 0.5+error), np.less(C, 1.0-error)) 
+    reduction = np.nonzero( np.logical_or(lowrange, highrange))
+    axes[1][0].quiver(hi[reduction], hj[reduction], U[reduction], V[reduction], C[reduction], pivot='middle')
+    axes[1][0].set_ylim([0, datay])
+    axes[1][0].set_title('Theta<RHT>')
+
+    #### Save and Clean up
+    plt.savefig(filename + '_plot.png')
+    plt.show(fig)
+    cleanup()
+
+    #---------------------------------------------------------------------- PLOT 2
+    print 'Backprojecting...'
+    plt.subplot(121)
+    plt.imshow(log, cmap='gray')
+    plt.ylim(0, datay)
+    plt.title(filepath)
+    plt.subplot(122)
+    plt.contour(backproj)
+    #plt.imshow(backproj, cmap='binary')
+    plt.ylim(0, datay)
+    plt.title(backproj_filename)
+    plt.show()
+    #___________________________________TODO SAVE PLOT
+    cleanup()
+    
+    
     '''
-    #---------------------------------------------------------------------------------------------------- 3D scatterplot
+    #---------------------------------------------------------------------- PLOT 3
+    print 'Theta Spectrum'
+    plt.plot(np.linspace(0.0, 180.0, num=ntheta, endpoint=False), spectrum)
+    #___________________________________TODO SAVE PLOT
+    plt.show()
+    cleanup()
+    
+    #---------------------------------------------------------------------- PLOT 4
+    #Polar plot of theta power
+    print 'Linearity'
+    r = np.append(spectrum, spectrum) / 2.0 
+    t = np.linspace(0.0, 2*np.pi, num=len(r), endpoint=False)
+    plt.polar(t, r)
+    plt.show()
+    cleanup()
+    '''
+
+    '''
+    #---------------------------------------------------------------------- PLOT 4
     n = 5
     steps = np.linspace(frac, 1.0, n, endpoint=True, retstep=False)
     #cmap = 'hot'
@@ -792,48 +864,10 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     axes[1][0].set_zlim([0, ntheta-1], auto=True)
     axes[1][0].set_title('3D Scatterplot of ThetaRHT')
     '''
-    #----------------------------------------------------------------------------------------------------
-    plt.show(fig)
-    #___________________________________TODO SAVE PLOT
-    del masked_udata
-    cleanup()
-    
-    print 'Backprojection'
-    plt.subplot(121)
-    plt.imshow(log, cmap='gray')
-    plt.ylim(0, datay)
-    plt.title(filepath)
-    plt.subplot(122)
-    plt.contour(backproj)
-    #plt.imshow(backproj, cmap='binary')
-    plt.ylim(0, datay)
-    plt.title(backproj_filename)
-    plt.show()
-    #___________________________________TODO SAVE PLOT
-    del log, backproj
-    cleanup()
-    
-    '''
-    print 'Theta Spectrum'
-    spectrum = np.load(spectrum_filename)
-    ntheta = len(spectrum)
-    plt.plot(np.linspace(0.0, 180.0, num=ntheta, endpoint=False), spectrum)
-    #___________________________________TODO SAVE PLOT
-    plt.show()
-    cleanup()
-    
 
-    #Polar plot of theta power
-    print 'Linearity'
-    r = np.append(spectrum, spectrum) / 2.0 
-    t = np.linspace(0.0, 2*np.pi, num=len(r), endpoint=False)
-    plt.polar(t, r)
-    plt.show()
-    cleanup()
-    '''
-
+    #---------------------------------------------------------------------- PLOTS END
     #Clear all and exit successfully
-    cleanup(all=True)
+    cleanup()
     return True
 
 
@@ -902,6 +936,13 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
     summary.append('Complete!')
     announce(summary)
     return True
+
+
+#-----------------------------------------------------------------------------------------
+#Initialization 3 of 3: Precomputed Objects
+#-----------------------------------------------------------------------------------------
+
+#TODO
         
 #-----------------------------------------------------------------------------------------
 #Command Line Mode
