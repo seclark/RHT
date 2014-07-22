@@ -393,13 +393,19 @@ def houghnew(img, theta=None, idl=False):
 
     return out, theta, bins
 
-def theta_rht(theta_array):
+def theta_rht(theta_array, uv=False):
     #Maps an XYT cube into a 2D Array of angles- weighted by their significance
     thetas = np.linspace(0.0, np.pi, len(theta_array), endpoint=False, retstep=False)
     ys = theta_array*np.sin(2.0*thetas)
-    xs = theta_array*np.cos(2.0*thetas)
-    angle = 0.5*np.arctan2(np.sum(ys), np.sum(xs)) #EQUATION (7)
-    return np.pi-math.fmod(angle+np.pi, np.pi) #EQUATION (8) #TODO __________________________________________Is this correct?
+    xs = theta_array*np.cos(2.0*thetas)    
+    if not uv:
+        angle = 0.5*np.arctan2(np.sum(ys), np.sum(xs)) #EQUATION (7)
+        return np.pi-math.fmod(angle+np.pi, np.pi) #EQUATION (8) #TODO __________________________________________Is this correct?
+    
+    #OR It can map all arrays to the vector (x, y) of theta power at one point
+    #MADE FOR USE WITH plt.quiver() #TODO
+    else:
+        return np.sum(xs), np.sum(ys)
 
 def buffershape(ntheta, filesize=FILECAP):
     #Shape of maximum sized array that can fit into a SINGLE buffer file 
@@ -455,8 +461,7 @@ def concat_along_axis_0(memmap_list):
 
         def append_memmaps(a, b):
             path = b.filename
-            tempshape = b.shape #(b.shape[0], *seed.shape[1:])
-            c = np.memmap(a.filename, dtype=DTYPE, mode='r+', offset=bytes_per_shape_in_bytes*a.shape[0], shape=tempshape )
+            c = np.memmap(a.filename, dtype=DTYPE, mode='r+', offset=bytes_per_shape_in_bytes*a.shape[0], shape=b.shape )
             c[:,...] = b[:,...] #Depends on offset correctly allocating new space at end of file
             b.flush()         
             b.close()        
@@ -468,7 +473,6 @@ def concat_along_axis_0(memmap_list):
 
 def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename): 
     message = '3/4:: Running RHT...'
-    update_progress(0.0, message)
     wcntr = int(np.floor(wlen/2))
 
     #Circular kernels
@@ -491,63 +495,83 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
     hjapp = Hj.append
     npsum = np.sum
 
-    if BUFFER:
+    if not BUFFER:
+        #Number of RHT operations that will be performed, and their coordinates
+        coords = zip( *np.nonzero( wlen_mask))
+        N = len(coords)
+        for c in range(N):
+            #try:
+            j,i = coords[c]
+            wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
+            h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
+            hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
+            hout *= np.greater_equal(hout, frac)
+            if any(hout):
+                htapp(hout)
+                hiapp(i)
+                hjapp(j)
+            update_progress(c/float(N-1), message)
+            #except:
+                #print 'Failure:', i, j, wcntr
+                ##raise
+            #finally:
+                #pass 
+            #End
+        putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets)) #Saves data
+        return True 
+
+    else:
         #Preparing to write hout to file during operation so it does not over-fill RAM
         temp_dir = tempfile.mkdtemp()
         temp_files = [] #List of memmap objects
         buffer_shape = buffershape(ntheta) #variable_length, ntheta
         def next_temp_filename():
             return os.path.join(temp_dir, 'rht'+ str(len(temp_files)) + '.dat')
+        print 'Temporary file', temp_dir, 'prepared and ready to hold buffered data.'
 
+        #Number of RHT operations that will be performed, and their coordinates
+        coords = zip( *np.nonzero( wlen_mask))
+        N = len(coords)
+        for c in range(N):
+            j,i = coords[c]
+            wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
+            h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
+            hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
+            hout *= np.greater_equal(hout, frac)
+            if any(hout):
+                htapp(hout)
+                hiapp(i)
+                hjapp(j)
+                if len(Hthets) == buffer_shape[0]:
+                    temp_files.append( np.memmap( next_temp_filename(), dtype=DTYPE, mode='w+', shape=buffer_shape )) #Creates full memmap object
+                    theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
+                    temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
+                    Hthets = [] #Reset Hthets
+            update_progress(c/float(N-1), message)
+            #End
 
-    #Number of RHT operations that will be performed, and their coordinates
-    coords = zip( *np.nonzero( wlen_mask))
-    N = len(coords)
-    for c in range(N):
-        #try:
-        j,i = coords[c]
-        wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
-        h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
-        hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
-        hout *= np.greater_equal(hout, frac)
-        if any(hout):
-            htapp(hout)
-            hiapp(i)
-            hjapp(j)
-        
-        if BUFFER and len(Hthets) == buffer_shape[0]:
-            temp_files.append( np.memmap( next_temp_filename(), dtype=DTYPE, mode='w+', shape=buffer_shape )) #Creates full memmap object
-            theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
-            temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
-            Hthets = [] #Reset Hthets
-        elif BUFFER and c == N-1 and len(Hthets) > 0:
+        if len(Hthets) > 0:
             temp_files.append( np.memmap( next_temp_filename(), dtype=DTYPE, mode='w+', shape=(len(Hthets), ntheta)  )) #Creates small memmap object
             theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
             temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
-            Hthets = [] #Reset Hthets
 
-        update_progress(c/float(N-1), message)
-        #except:
-            #print 'Failure:', i, j, wcntr
-            ##raise
-        #finally:
-            #pass 
-
-    if BUFFER:
+        print 'Converting list of buffered hthet arrays into final XYT cube'
         converted_hthets = concat_along_axis_0(temp_files) #Combines memmap objects sequentially
-        #for temp_file in temp_files: #May not be necessary if concat can digest and delete these.
-            #temp_file.flush()        # 
-            #temp_file.close()        #
-            #del temp_file            #
         putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets) #Saves data
         converted_hthets.flush()
         #converted_hthets.close() #Did not work?
         del converted_hthets
-        #shutil.rmtree(temp_dir) #Did not work!?
-    else:
-        putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets)) #Saves data
-
-    return True
+        
+        try:
+            for obj in os.listdir(temp_dir):
+                obj.close()
+                del obj
+            shutil.rmtree(temp_dir) #Did not work!?
+        except:
+            print 'Deletion of files in', temp_dir, 'was not successful... Sorry!'
+        finally:
+            return True
+            
 
 #-----------------------------------------------------------------------------------------
 #Interactive Functions
