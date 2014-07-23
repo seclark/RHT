@@ -747,6 +747,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         C[c], U[c], V[c] = theta_rht(hthets[c], uv=True)
     C /= np.pi 
     C *= np.isfinite(C)
+    np.clip(C, 0.0, 1.0, out=C)
 
     #Define Convenience Functions
     def cleanup():
@@ -774,13 +775,9 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     axes[0][1].set_title('Sharpened')
 
     #### Quiver plot of theta<RHT> across the image
-    #reduction = 2 
-    #axes[1][0].quiver(hi[::reduction], hj[::reduction], U[::reduction], V[::reduction], C[::reduction], pivot='middle')
-    error = 0.1
-    lowrange = np.logical_and(np.greater(C, error), np.less(C, 0.5-error))
-    highrange = np.logical_and(np.greater(C, 0.5+error), np.less(C, 1.0-error)) 
-    reduction = np.nonzero( np.logical_or(lowrange, highrange))
-    axes[1][0].quiver(hi[reduction], hj[reduction], U[reduction], V[reduction], C[reduction], pivot='middle')
+    error = 0.0001
+    reduction = np.nonzero( [0.0+error <c< 0.5-error or 0.5+error <c< 1.0-error for c in C] )
+    axes[1][0].quiver(hi[reduction], hj[reduction], U[reduction], V[reduction], C[reduction], units='xy', pivot='middle', scale=1.0)
     axes[1][0].set_ylim([0, datay])
     axes[1][0].set_title('Theta<RHT>')
 
@@ -791,17 +788,22 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     #---------------------------------------------------------------------- PLOT 2
     print 'Backprojecting...'
+
+    #### Log-scale plot of original image data
     plt.subplot(121)
     plt.imshow(log, cmap='gray')
     plt.ylim(0, datay)
     plt.title(filepath)
+
+    #### Backprojection of RHT data
     plt.subplot(122)
-    plt.contour(backproj)
-    #plt.imshow(backproj, cmap='binary')
+    plt.contour(backproj) #plt.imshow(backproj, cmap='binary')
     plt.ylim(0, datay)
     plt.title(backproj_filename)
+    
+    #### Save and Clean up
+    plt.savefig(filename + '_result.png')
     plt.show()
-    #___________________________________TODO SAVE PLOT
     cleanup()
     
     
