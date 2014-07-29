@@ -5,7 +5,7 @@
 #-----------------------------------------------------------------------------------------
 #Imports
 #-----------------------------------------------------------------------------------------
-from __future__ import division
+from __future__ import division #Must be first line of code in the file
 from astropy.io import fits
 #from scipy.stats import norm
 #from mpl_toolkits.mplot3d import Axes3D
@@ -20,6 +20,7 @@ import sys
 import string
 import tempfile 
 import shutil
+import time 
 
 #-----------------------------------------------------------------------------------------
 #Initialization 1 of 3: Calculation Parameters
@@ -36,7 +37,7 @@ SMR = 15.0 #smoothing radius of unsharp mask function
 TEXTWIDTH = 70 #Width of some displayed text objects
 
 #Allows processing of larger files than RAM alone would allow
-BUFFER = True #Gives the program permission to create a temporary directory for RHT data
+BUFFER = False #Gives the program permission to create a temporary directory for RHT data
 DTYPE = np.float32 #Single precision
 FILECAP = int(5e8) #Maximum number of BYTES allowed for a SINGLE buffer file. THERE CAN BE MULTIPLE BUFFER FILES!
 
@@ -44,6 +45,10 @@ FILECAP = int(5e8) #Maximum number of BYTES allowed for a SINGLE buffer file. TH
 BAD_0 = True
 BAD_INF = True
 BAD_Neg = False 
+
+#Timers
+start_time = None
+stop_time = None
 
 #-----------------------------------------------------------------------------------------
 #Utility Functions
@@ -64,24 +69,42 @@ def announce(strings):
     print announcement(strings)
 
 def update_progress(progress, message='Progress:'):
-    #Create progress meter
-    length = 3*TEXTWIDTH//5
-    messlen = TEXTWIDTH-(length+4)
-    message = string.ljust(message, messlen)[:messlen]
-    if 0.0 <= progress <= 1.0:
-        p = int(length*progress/1.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(length-p), message))
-        sys.stdout.flush()
-        if p == length:
-            print ''
-    elif 0.0 <= progress <= 100.0:
-        p = int(length*progress/100.0) 
-        sys.stdout.write('\r{2} [{0}{1}]%'.format('#'*p, ' '*(length-p), message)) 
-        sys.stdout.flush()
-        if p == length:
-            print ''
+    #Create progress meter that looks like: 
+    #message + ' ' + '[' + '#'*p + ' '*(length-p) + ']%'
+
+    if not 0.0 <= progress <= 1.0:
+        raise ValueError('Progress value outside allowed value in update_progress') 
+
+    global start_time
+    global stop_time 
+
+    if 0.0 == progress: #First call
+        start_time = time.time()
+        stop_time = None
+        return
+
+    elif stop_time is None: #Second call
+        stop_time = start_time + (time.time() - start_time)/progress
+
+    #Normal Call with Progress
+    sec_remaining = int(stop_time - time.time())
+    if sec_remaining > 60:
+        time_message = ' < ' + str(sec_remaining//60  +1) + 'min'
     else:
-        pass ##TODO Progress Bar Failure
+        time_message = ' < ' + str(sec_remaining) + 'sec'
+
+    length = int(0.55 * TEXTWIDTH)
+    messlen = TEXTWIDTH-(length+3)-len(time_message)
+    message = string.ljust(message, messlen)[:messlen]
+
+    p = int(length*progress/1.0) 
+    sys.stdout.write('\r{2} [{0}{1}]{3}'.format('#'*p, ' '*(length-p), message, time_message))
+    sys.stdout.flush()
+
+    if p == length: #Final Call
+        start_time = None
+        stop_time = None
+        print ''
 
 #-----------------------------------------------------------------------------------------
 #Image Processing Functions
@@ -92,11 +115,11 @@ def is_valid_file(filepath):
 
     return: Boolean, True ONLY when the data could have rht() applied successfully
     '''
-    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy', '_plot.png'] #TODO___More Endings
+    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy', '_plot.png', '_result.png'] #TODO___More Endings
     if any([filepath.endswith(e) for e in excluded_file_endings]):
         return False
     
-    excluded_file_content = ['_xyt', '_backproj', '_spectrum', '_plot'] #TODO___More Exclusions
+    excluded_file_content = ['_xyt', '_backproj', '_spectrum', '_plot', '_result'] #TODO___More Exclusions
     if any([e in filepath for e in excluded_file_content]):
         return False
 
@@ -106,7 +129,7 @@ def ntheta_w(w=WLEN):
     #Returns the number of theta bins in each Hthet array
 
     #Linearly proportional to wlen
-    return int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  #TODO_________________________________ntheta
+    return 2*int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  #TODO_________________________________ntheta
 
 def center(filepath, shape=(500, 500)):
     #Returns a cutout from the center of the data
@@ -141,13 +164,19 @@ def getXYT(xyt_filename, rebuild=False, filepath = None):
         print 'Warning: Reconstructing very large array in memory...'
         data = getData(filepath)
         datay, datax = data.shape
-        ntheta = len(data['hthets'][0])
+        ntheta = data['hthets'][0].shape
         print 'Size:', datay, 'x', datax, 'x', ntheta
-        xyt = np.zeros((datay, datax, ntheta))
+        
+        if BUFFER:
+            xyt = np.memmap(tempfile.TemporaryFile(), dtype=DTYPE, mode='w+', shape=(datay, datax, ntheta))
+            xyt.fill(0.0)
+        else:
+            xyt = np.zeros((datay, datax, ntheta))
+
         coords = zip(data['hj'], data['hi'])
         for c in range(len(coords)):
             j,i = coords[c]
-            xyt[j][i] = data['hthets'][c]
+            xyt[j,i,:] = data['hthets'][c]
         return xyt
     else:
         #Returns the sparse, memory mapped form only
@@ -260,13 +289,6 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
             print 'Failure in getData('+filepath+')... Returning None'
             return None 
 
-    #TODO___________________________________________________________________________clean_data
-    #Sets all non-finite values (NaN or Inf) to the minimum finite value of data
-    #datamin = np.nanmin(data)
-    #clean_data = np.where(np.isfinite(data), data, datamin*np.ones_like(data))
-    #Sets all non-finite values (NaN or Inf) to zero
-    #clean_data = np.where(np.isfinite(data), data, np.zeros_like(data))
-
     if not make_mask:
         #Done Reading Data, No Mask Needed
         return data
@@ -314,13 +336,19 @@ def umask(data, radius, smr_mask=None):
         return np.where(smr_mask, bindata, smr_mask) 
 
 def fast_hough(in_arr, xyt, ntheta):
+
+    #THIS IS ONE BOTTLENECK IN THE CODE
+
     if in_arr.ndim != 2 or xyt.ndim != 3:
         raise ValueError('fast_hough failure because of input dimensions!')
 
-    incube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)
-    out = np.sum(np.sum(incube*xyt,axis=0), axis=0)
-    
-    return out        
+    #incube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)
+    #out = np.sum(np.sum(incube*xyt,axis=0), axis=0)
+    #return out        
+
+    #return np.sum(np.sum(np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)*xyt, axis=0), axis=0)
+    a, b = in_arr.shape
+    return np.sum(np.sum( np.multiply( in_arr.reshape((a,b,1)), xyt) , axis=0), axis=0)
 
 def all_thetas(window, thetbins):
     wy, wx = window.shape #Parse x/y dimensions
@@ -328,37 +356,23 @@ def all_thetas(window, thetbins):
     
     #Makes prism; output has dimensions (x, y, theta)
     out = np.zeros((wy, wx, ntheta), np.int)
-    
-    for (j, i) in zip( *np.nonzero(window)):
+    coords = zip( *np.nonzero(window))
+
+    for (j, i) in coords:
         #At each x/y value, create new single-pixel data
         w_1 = np.zeros((wy, wx), np.float_)
         w_1[j,i] = 1
         H, thets, dist = houghnew(w_1, thetbins) 
         out[j, i, :] = H[np.floor(len(dist)/2), :]
 
-    '''
-    for i in xrange(wx):
-        for j in xrange(wy):
-            #At each x/y value, create new single-pixel data
-            w_1 = np.zeros((wy, wx), np.float_)
-            
-            # run the Hough for each point one at a time
-            if window[j,i] == 1:
-                w_1[j,i] = 1
-       
-                H, thets, dist = houghnew(w_1, thetbins) 
-                #rel = H[np.floor(len(dist)/2), :] 
-                #out[j, i, :] = rel
-                out[j, i, :] = H[np.floor(len(dist)/2), :] 
-    '''
-    return out    
+    #TODO MAKE ONE SIDED!
 
-def houghnew(image, theta=None):
+
+    return out.astype(np.bool_)
+
+def houghnew(image, theta):
     if image.ndim != 2:
         raise ValueError('The input data must be 2-D')
-
-    if theta is None:
-        theta = np.linspace(-np.pi / 2.0, np.pi / 2.0, 180)
 
     if theta.ndim != 1:
         raise ValueError('The input data must be 2-D')
@@ -371,7 +385,7 @@ def houghnew(image, theta=None):
     bins = np.linspace(-nr_bins/2, nr_bins/2, int(nr_bins)) #TODO___________________endpoint=False?
 
     # allocate the output data
-    out = np.zeros((int(nr_bins), len(theta)), dtype=np.uint64) #TODO______ uint664 datatype?
+    out = np.zeros((int(nr_bins), len(theta)), dtype=np.bool_)
 
     # precompute the sin and cos of the angles
     cos_theta = np.cos(theta)
@@ -440,7 +454,10 @@ def buffershape(ntheta, filesize=FILECAP):
 def concat_along_axis_0(memmap_list):
     #Combines memmap objects of the same shape, except along axis 0,
     #BY LEAVING THEM ALL ON DISK AN APPENDING THEM SEQUENTIALLY
-    if len(memmap_list) == 1:
+    if len(memmap_list) == 0:
+        raise ValueError('Failed to buffer any data!')
+
+    elif len(memmap_list) == 1:
         return memmap_list[0]
     
     else:
@@ -496,7 +513,8 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
 
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(wkernel, xyt, ntheta) #Length ntheta array
-    dcube = np.repeat(masked_udata[:,:,np.newaxis], repeats=ntheta, axis=2)
+
+    #dcube = np.repeat(masked_udata[:,:,np.newaxis], repeats=ntheta, axis=2) #TODO****************
 
     #Local function calls are faster than globals
     Hthets = []
@@ -510,24 +528,22 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
     if not BUFFER:
         #Number of RHT operations that will be performed, and their coordinates
         coords = zip( *np.nonzero( wlen_mask))
+        update_progress(0.0, message)
         N = len(coords)
         for c in range(N):
-            #try:
             j,i = coords[c]
-            wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
-            h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
+
+            h = fast_hough(masked_udata[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1], xyt, ntheta)
+            #wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   #TODO****************
+            #h = npsum(npsum(wcube*xyt,axis=0), axis=0)  #TODO****************
+            
             hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
             hout *= np.greater_equal(hout, frac)
-            if any(hout):
+            if np.any(hout):
                 htapp(hout)
                 hiapp(i)
                 hjapp(j)
-            update_progress(c/float(N-1), message)
-            #except:
-                #print 'Failure:', i, j, wcntr
-                ##raise
-            #finally:
-                #pass 
+            update_progress((c+1)/float(N), message)
             #End
         putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets)) #Saves data
         return True 
@@ -539,18 +555,22 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
         buffer_shape = buffershape(ntheta) #variable_length, ntheta
         def next_temp_filename():
             return os.path.join(temp_dir, 'rht'+ str(len(temp_files)) + '.dat')
-        #print 'Temporary files in:', temp_dir 
+        print 'Temporary files in:', temp_dir 
 
         #Number of RHT operations that will be performed, and their coordinates
+        update_progress(0.0, message)
         coords = zip( *np.nonzero( wlen_mask))
         N = len(coords)
         for c in range(N):
             j,i = coords[c]
-            wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   
-            h = npsum(npsum(wcube*xyt,axis=0), axis=0) 
+            
+            h = fast_hough(masked_udata[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1], xyt, ntheta)
+            #wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]    #TODO****************
+            #h = npsum(npsum(wcube*xyt,axis=0), axis=0)     #TODO****************
+            
             hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
             hout *= np.greater_equal(hout, frac)
-            if any(hout):
+            if np.any(hout):
                 htapp(hout)
                 hiapp(i)
                 hjapp(j)
@@ -559,7 +579,7 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
                     theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
                     temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
                     Hthets = [] #Reset Hthets
-            update_progress(c/float(N-1), message)
+            update_progress((c+1)/float(N), message)
             #End
 
         if len(Hthets) > 0:
@@ -625,7 +645,7 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         print '2/4::', 'Size:', str(datax)+'x'+str(datay), 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)
         
         ntheta = ntheta_w(wlen) #TODO_______________ntheta
-        theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
+        theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True) #____________________________________________________________________________________________ 2*       
 
         success = window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename) #TODO__________________
         
@@ -674,7 +694,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
 
     #Spectrum *Length ntheta array of theta power (above the threshold) for whole data*
-    spectrum = [np.sum(theta) for theta in hthets]
+    spectrum = np.sum(hthets, axis=0) #[np.sum(theta) for theta in hthets]
     spectrum_filename = filename + '_spectrum.npy'
     np.save(spectrum_filename, np.array(spectrum))
 
@@ -727,7 +747,8 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
             pass 
 
     #Loads in relevant files and data___________________________________
-    data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
+    #data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
+    data = getData(filepath)
     backproj = np.load(backproj_filename).astype(np.float)
     spectrum = np.load(spectrum_filename).astype(np.float)
     hi, hj, hthets = getXYT(xyt_filename)
@@ -737,17 +758,17 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     datay, datax = data.shape
 
     #Produce Specific Plots
-    masked_udata = umask(data, smr, smr_mask=smr_mask)
+    masked_udata = umask(data, smr)
     log = np.log(np.where( np.isfinite(data), data, np.ones_like( data) )) #TODO Warnings?
-    U = np.zeros_like(hi)
-    V = np.zeros_like(hj)
-    C = np.zeros((len(U)), dtype=np.float)
-    coords = zip(hi, hj)
-    for c in range(len(coords)):
-        C[c], U[c], V[c] = theta_rht(hthets[c], uv=True)
-    C /= np.pi 
-    C *= np.isfinite(C)
-    np.clip(C, 0.0, 1.0, out=C)
+    #U = np.zeros_like(hi)
+    #V = np.zeros_like(hj)
+    #C = np.zeros((len(U)), dtype=np.float)
+    #coords = zip(hi, hj)
+    #for c in range(len(coords)):
+        #C[c], U[c], V[c] = theta_rht(hthets[c], uv=True)
+    #C /= np.pi 
+    #C *= np.isfinite(C)
+    #np.clip(C, 0.0, 1.0, out=C)
 
     #Define Convenience Functions
     def cleanup():
@@ -775,11 +796,11 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     axes[0][1].set_title('Sharpened')
 
     #### Quiver plot of theta<RHT> across the image
-    error = 0.0001
-    reduction = np.nonzero( [0.0+error <c< 0.5-error or 0.5+error <c< 1.0-error for c in C] )
-    axes[1][0].quiver(hi[reduction], hj[reduction], U[reduction], V[reduction], C[reduction], units='xy', pivot='middle', scale=1.0)
-    axes[1][0].set_ylim([0, datay])
-    axes[1][0].set_title('Theta<RHT>')
+    #error = 0.0001
+    #reduction = np.nonzero( [0.0+error <c< 0.5-error or 0.5+error <c< 1.0-error for c in C] )[::4]
+    #axes[1][0].quiver(hi[reduction], hj[reduction], U[reduction], V[reduction], C[reduction], units='xy', pivot='middle', scale=1.0, cmap='hsv')
+    #axes[1][0].set_ylim([0, datay])
+    #axes[1][0].set_title('Theta<RHT>')
 
     #### Save and Clean up
     plt.savefig(filename + '_plot.png')
@@ -807,10 +828,10 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     cleanup()
     
     
-    '''
     #---------------------------------------------------------------------- PLOT 3
     print 'Theta Spectrum'
-    plt.plot(np.linspace(0.0, 180.0, num=ntheta, endpoint=False), spectrum)
+
+    plt.plot(np.linspace(0.0, 2*180.0, num=ntheta, endpoint=False), spectrum) #___________________________________________________________________________---2*
     #___________________________________TODO SAVE PLOT
     plt.show()
     cleanup()
@@ -818,12 +839,10 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     #---------------------------------------------------------------------- PLOT 4
     #Polar plot of theta power
     print 'Linearity'
-    r = np.append(spectrum, spectrum) / 2.0 
-    t = np.linspace(0.0, 2*np.pi, num=len(r), endpoint=False)
-    plt.polar(t, r)
+    plt.polar(np.linspace(0.0, 2*np.pi, num=ntheta, endpoint=False), spectrum)
     plt.show()
     cleanup()
-    '''
+    
 
     '''
     #---------------------------------------------------------------------- PLOT 4
@@ -919,6 +938,14 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
     #Run RHT Over All Valid Inputs 
     announce(['Fast Rolling Hough Transform by Susan Clark', 'Started for: '+source])
     #TODO batch progress bar
+
+    if not 0 <= frac <= 1:
+        frac = FRAC
+    if not (wlen > 0 and wlen%2):
+        wlen = WLEN
+    if not (smr > 0 and smr%2):
+        smr = SMR
+
     summary = []
     for path in pathlist:
         success = True
