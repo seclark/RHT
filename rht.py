@@ -70,7 +70,7 @@ def announce(strings):
 
 def update_progress(progress, message='Progress:'):
     #Create progress meter that looks like: 
-    #message + ' ' + '[' + '#'*p + ' '*(length-p) + ']%'
+    #message + ' ' + '[' + '#'*p + ' '*(length-p) + ']' + time_message
 
     if not 0.0 <= progress <= 1.0:
         raise ValueError('Progress value outside allowed value in update_progress') 
@@ -86,12 +86,15 @@ def update_progress(progress, message='Progress:'):
     elif stop_time is None: #Second call
         stop_time = start_time + (time.time() - start_time)/progress
 
+    elif np.random.rand() > 0.95: #Randomly callable re-calibration
+        stop_time = start_time + (time.time() - start_time)/progress
+
     #Normal Call with Progress
     sec_remaining = int(stop_time - time.time())
-    if sec_remaining > 60:
+    if sec_remaining >= 60:
         time_message = ' < ' + str(sec_remaining//60  +1) + 'min'
     else:
-        time_message = ' < ' + str(sec_remaining) + 'sec'
+        time_message = ' < ' + str(sec_remaining +1) + 'sec'
 
     length = int(0.55 * TEXTWIDTH)
     messlen = TEXTWIDTH-(length+3)-len(time_message)
@@ -129,13 +132,15 @@ def ntheta_w(w=WLEN):
     #Returns the number of theta bins in each Hthet array
 
     #Linearly proportional to wlen
-    return 2*int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  #TODO_________________________________ntheta
+    return int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  #TODO_________________________________ntheta
 
-def center(filepath, shape=(500, 500)):
+def center(filepath, shape=(512, 512)):
     #Returns a cutout from the center of the data
+    x, y = int(shape[0]), int(shape[1])
+    if x < 64 or y < 64:
+        raise ValueError('Invalid shape in center(), or image too small')
     data = getData(filepath)
     datay, datax = data.shape 
-    x, y = shape
     if 0 < x < datax and 0 < y < datay:
         left = int(datax//2-x//2)
         right = int(datax//2+x//2)
@@ -147,13 +152,40 @@ def center(filepath, shape=(500, 500)):
         np.save(center_filename, cutout)
         return center_filename
     else:
-        return None 
+        return center(filepath, shape=(x//2,y//2))
 
-def putXYT(xyt_filename, hi, hj, hthets, compressed=True):
-    if compressed:
-        np.savez_compressed(xyt_filename, hi=hi, hj=hj, hthets=hthets)
+def putXYT(xyt_filename, hi, hj, hthets, compressed=True): #TODO _______________________________________PARAMETERS
+    if xyt_filename.endswith('.npz'):
+        #IMPLEMENTATION1: Zipped Numpy arrays of Data
+        if compressed:
+            np.savez_compressed(xyt_filename, hi=hi, hj=hj, hthets=hthets)  #TODO _______________________________________HEADER VARS
+        else:
+            np.savez(xyt_filename, hi=hi, hj=hj, hthets=hthets)
+
+    elif xyt_filename.endswith('.fits'):
+        #IMPLEMENTATION2: FITS Table File
+        Hi = fits.Column(name='hi', format='1I', array=hi)
+        Hj = fits.Column(name='hj', format='1I', array=hj)
+
+        Hthets = [fits.Column(name='hthets', format='E', array=hthets.T[i]) for i in xrange(len(hthets[0]))]
+        
+        Hthets.append(0, Hj)
+        Hthets.append(0, Hi)
+        cols = fits.ColDefs(Hthets)
+        tbhdu = fits.BinTableHDU.from_columns(cols)
+
+        #Header
+        prihdr = fits.Header()
+        prihdr['OBSERVER'] = 'Edwin Hubble' #TODO _______________________________________HEADER VARS
+        
+        #Whole FITS File
+        prihdu = fits.PrimaryHDU(header=prihdr)
+        thdulist = fits.HDUList([prihdu, tbhdu])
+        thdulist.writeto(xyt_filename, output_verify='silentfix', clobber=True, checksum=True)
+
+
     else:
-        np.savez(xyt_filename, hi=hi, hj=hj, hthets=hthets)
+        raise ValueError('Supported output types in putXYT include .npz and .fits only')
 
 def getXYT(xyt_filename, rebuild=False, filepath = None):    
     #Reads in a .npz file containing coordinate pairs in data space (hi, hj)
@@ -161,16 +193,16 @@ def getXYT(xyt_filename, rebuild=False, filepath = None):
     data = np.load(xyt_filename, mmap_mode='r') #Allows for reading in very large files!
     if rebuild and filepath is not None:
         #Can recreate an entire 3D array of mostly 0s
-        print 'Warning: Reconstructing very large array in memory...'
         data = getData(filepath)
         datay, datax = data.shape
-        ntheta = data['hthets'][0].shape
-        print 'Size:', datay, 'x', datax, 'x', ntheta
-        
+        ntheta = data['hthets'][0].shape  
+
         if BUFFER:
             xyt = np.memmap(tempfile.TemporaryFile(), dtype=DTYPE, mode='w+', shape=(datay, datax, ntheta))
             xyt.fill(0.0)
         else:
+            print 'Warning: Reconstructing very large array in memory...'
+            print 'Size:', datay, 'x', datax, 'x', ntheta
             xyt = np.zeros((datay, datax, ntheta))
 
         coords = zip(data['hj'], data['hi'])
@@ -272,14 +304,14 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
         #Reading Data
         if filepath.endswith('.fits'):
             #Fits file handling
-            hdu = fits.open(filepath)[0] #Opens first HDU
+            hdu = fits.open(filepath, memmap=True)[0] #Opens first HDU
             data = hdu.data #Reads all data as an array
 
         elif filepath.endswith('.npy'):
-            data = np.load(filepath) #Reads numpy files #TODO
+            data = np.load(filepath, mmap_mode='r') #Reads numpy files #TODO
         
         else:
-            data = scipy.ndimage.imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords         
+            data = scipy.ndimage.imread(filepath, flatten=True)[::-1] #Makes B/W array, reversing y-coords         
     except:
         #Failure Reading Data
         if make_mask:
@@ -312,7 +344,7 @@ def circ_kern(diameter):
     r = int(np.floor(diameter/2))
     mnvals = np.indices((diameter, diameter)) - r
     rads = np.hypot(mnvals[0], mnvals[1])
-    return np.less_equal(rads, r).astype(np.int)
+    return np.less_equal(rads, r)
 
 #Unsharp mask. Returns binary data.
 def umask(data, radius, smr_mask=None):
@@ -325,30 +357,27 @@ def umask(data, radius, smr_mask=None):
     subtr_data = data - outdata/kernweight
     
     #Convert to binary data
-    bindata = np.greater(subtr_data, 0)
-
+    bindata = np.greater(subtr_data, 0.0)
     if smr_mask == None:
         return bindata
     else:
-        #nans = np.empty(bindata.shape, dtype=np.int)
-        #nans.fill(np.nan)
-        #return np.where(smr_mask, bindata, nans) #TODO________________________________________May Not be right?
-        return np.where(smr_mask, bindata, smr_mask) 
+        return np.where(smr_mask, bindata, smr_mask)
 
-def fast_hough(in_arr, xyt, ntheta):
+def fast_hough(in_arr, xyt, ntheta): #TODO_________________________________________#THIS IS ONE BOTTLENECK IN THE CODE
 
-    #THIS IS ONE BOTTLENECK IN THE CODE
+    assert in_arr.ndim == 2 
+    assert xyt.ndim == 3
+    assert in_arr.shape[0] == xyt.shape[0]
+    assert in_arr.shape[1] == xyt.shape[1]
 
-    if in_arr.ndim != 2 or xyt.ndim != 3:
-        raise ValueError('fast_hough failure because of input dimensions!')
-
-    #incube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)
-    #out = np.sum(np.sum(incube*xyt,axis=0), axis=0)
-    #return out        
-
+    #IMPLEMENTATION1: Copy 2D array into 3D stack, and multiply by other stack (SLOW)
     #return np.sum(np.sum(np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)*xyt, axis=0), axis=0)
-    a, b = in_arr.shape
-    return np.sum(np.sum( np.multiply( in_arr.reshape((a,b,1)), xyt) , axis=0), axis=0)
+
+    #IMPLEMENTATION2: Broadcast 2D array against 3D stack and multiply (FAST)
+    return np.sum(np.sum( np.multiply( in_arr.reshape((in_arr.shape[0],in_arr.shape[1],1)), xyt) , axis=0), axis=0)
+
+    #IMPLEMENTATION3: Broadcast 2D array against 3D stack and AND them together (VERY FAST)
+    #return np.sum(np.sum( np.logical_and( in_arr.reshape((in_arr.shape[0],in_arr.shape[1],1)), xyt) , axis=0), axis=0)
 
 def all_thetas(window, thetbins):
     wy, wx = window.shape #Parse x/y dimensions
@@ -360,12 +389,12 @@ def all_thetas(window, thetbins):
 
     for (j, i) in coords:
         #At each x/y value, create new single-pixel data
-        w_1 = np.zeros((wy, wx), np.float_)
+        w_1 = np.zeros((wy, wx), np.bool_)
         w_1[j,i] = 1
         H, thets, dist = houghnew(w_1, thetbins) 
         out[j, i, :] = H[np.floor(len(dist)/2), :]
 
-    #TODO MAKE ONE SIDED!
+    #TODO MAKE ONE SIDED! _____________________________________________________________________________
 
 
     return out.astype(np.bool_)
@@ -415,7 +444,6 @@ def houghnew(image, theta):
 
         # finally assign the proper values to the out array
         out[:len(bincount), i] = bincount
-        #out.T[i] = bincount
 
     return out, theta, bins
 
@@ -455,7 +483,7 @@ def concat_along_axis_0(memmap_list):
     #Combines memmap objects of the same shape, except along axis 0,
     #BY LEAVING THEM ALL ON DISK AN APPENDING THEM SEQUENTIALLY
     if len(memmap_list) == 0:
-        raise ValueError('Failed to buffer any data!')
+        raise ValueError('Failed to buffer any data!') #TODO_______________________________Unhandled Exception
 
     elif len(memmap_list) == 1:
         return memmap_list[0]
@@ -489,31 +517,40 @@ def concat_along_axis_0(memmap_list):
         bytes_per_shape_in_bytes = elements_per_shape_in_elements * bits_per_element_in_bits // 8
 
         def append_memmaps(a, b):
-            path = b.filename
             c = np.memmap(a.filename, dtype=DTYPE, mode='r+', offset=bytes_per_shape_in_bytes*a.shape[0], shape=b.shape )
             c[:,...] = b[:,...] #Depends on offset correctly allocating new space at end of file
             b.flush()         
             b.close()        
             del b
-            #os.remove(path) #CAN BE DONE LATER, BUT...
             return c 
 
         return reduce(append_memmaps, others, initializer=seed)
 
-def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename): 
-    message = '3/4:: Running RHT...'
+def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename, message): 
+    
     wcntr = int(np.floor(wlen/2))
 
     #Circular kernels
     wkernel = circ_kern(wlen)
-    xyt = all_thetas(wkernel, theta) #Cylinder of all theta values per point
+    
+    temp_kernel = wkernel.copy()
+    temp_kernel[:,:wlen//2] = 0
+    xyt = all_thetas(temp_kernel, theta) #Cylinder of all theta values per point
+    xyt[:,:,ntheta//2:] = xyt[::-1,::-1,ntheta//2:]
+    xyt[:wlen//2+1,:,ntheta//2] = 0
+    xyt[wlen//2:,:,0] = 0
 
+    
+    for i in range(ntheta)[::9]:
+        plt.imshow(xyt[:,:,i])
+        plt.show()
+    
     #Unsharp masks the whole data set
     masked_udata = umask(data, smr, smr_mask=smr_mask) 
 
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(wkernel, xyt, ntheta) #Length ntheta array
-
+    
     #dcube = np.repeat(masked_udata[:,:,np.newaxis], repeats=ntheta, axis=2) #TODO****************
 
     #Local function calls are faster than globals
@@ -647,7 +684,8 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         ntheta = ntheta_w(wlen) #TODO_______________ntheta
         theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True) #____________________________________________________________________________________________ 2*       
 
-        success = window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename) #TODO__________________
+        message = '3/4:: Running RHT...'
+        success = window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename, message) #TODO__________________
         
 
         print '4/4:: Successfully Saved Data As', xyt_filename

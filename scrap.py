@@ -20,9 +20,11 @@ import tempfile
 import shutil
    
 
-def houghnew(image, theta):
-    if image.ndim != 2 or theta.ndim != 1:
-        raise ValueError('In houghnew, image must be 2-D and theta must be 1-D')
+def houghnew(image, cos_theta, sin_theta):
+    assert image.ndim == 2 
+    assert cos_theta.ndim == 1
+    assert sin_theta.ndim == 1
+    assert len(cos_theta) == len(sin_theta)
 
     wy, wx = image.shape 
     wmid = np.floor(wx/2.0) #_____________________________________________TODO??
@@ -31,11 +33,7 @@ def houghnew(image, theta):
     nr_bins = np.ceil(np.hypot(*image.shape))
 
     # allocate the output data
-    out = np.zeros((int(nr_bins), len(theta)), dtype=np.bool_) #TODO______ uint664 datatype?
-
-    # precompute the sin and cos of the angles
-    cos_theta = np.cos(theta)
-    sin_theta = np.sin(theta)
+    out = np.zeros((int(nr_bins), len(cos_theta)), dtype=np.bool_)
 
     # find the indices of the non-zero values in
     # the input data
@@ -63,13 +61,17 @@ def houghnew(image, theta):
         out[:len(bincount), i] = bincount
         #out.T[i] = bincount
 
-    return out
+    return out[np.floor(nr_bins/2), :]
 
 
 def all_thetas(window, thetbins):
     wy, wx = window.shape #Parse x/y dimensions
     ntheta = len(thetbins) #Parse height in theta
-    nr_bins = int(np.ceil(np.hypot(*window.shape)))
+
+
+    # precompute the sin and cos of the angles
+    cos_theta = np.cos(thetbins)
+    sin_theta = np.sin(thetbins)
     
     #Makes prism; output has dimensions (x, y, theta)
     out = np.zeros((wy, wx, ntheta), np.int)
@@ -79,6 +81,6 @@ def all_thetas(window, thetbins):
         #At each x/y value, create new single-pixel data
         w_1 = np.zeros((wy, wx), np.float_)
         w_1[j,i] = 1
-        out[j, i, :] = houghnew(w_1, thetbins)[np.floor(nr_bins/2), :]
+        out[j, i, :] = houghnew(w_1, cos_theta, sin_theta)
 
     return out 
