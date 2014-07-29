@@ -37,7 +37,7 @@ SMR = 15.0 #smoothing radius of unsharp mask function
 TEXTWIDTH = 70 #Width of some displayed text objects
 
 #Allows processing of larger files than RAM alone would allow
-BUFFER = False #Gives the program permission to create a temporary directory for RHT data
+BUFFER = True #Gives the program permission to create a temporary directory for RHT data
 DTYPE = np.float32 #Single precision
 FILECAP = int(5e8) #Maximum number of BYTES allowed for a SINGLE buffer file. THERE CAN BE MULTIPLE BUFFER FILES!
 
@@ -379,46 +379,20 @@ def fast_hough(in_arr, xyt, ntheta): #TODO______________________________________
     #IMPLEMENTATION3: Broadcast 2D array against 3D stack and AND them together (VERY FAST)
     #return np.sum(np.sum( np.logical_and( in_arr.reshape((in_arr.shape[0],in_arr.shape[1],1)), xyt) , axis=0), axis=0)
 
-def all_thetas(window, thetbins):
-    wy, wx = window.shape #Parse x/y dimensions
-    ntheta = len(thetbins) #Parse height in theta
-    
-    #Makes prism; output has dimensions (x, y, theta)
-    out = np.zeros((wy, wx, ntheta), np.int)
-    coords = zip( *np.nonzero(window))
-
-    for (j, i) in coords:
-        #At each x/y value, create new single-pixel data
-        w_1 = np.zeros((wy, wx), np.bool_)
-        w_1[j,i] = 1
-        H, thets, dist = houghnew(w_1, thetbins) 
-        out[j, i, :] = H[np.floor(len(dist)/2), :]
-
-    #TODO MAKE ONE SIDED! _____________________________________________________________________________
-
-
-    return out.astype(np.bool_)
-
-def houghnew(image, theta):
-    if image.ndim != 2:
-        raise ValueError('The input data must be 2-D')
-
-    if theta.ndim != 1:
-        raise ValueError('The input data must be 2-D')
+def houghnew(image, cos_theta, sin_theta):
+    assert image.ndim == 2 
+    assert cos_theta.ndim == 1
+    assert sin_theta.ndim == 1
+    assert len(cos_theta) == len(sin_theta)
 
     wy, wx = image.shape 
     wmid = np.floor(wx/2.0) #_____________________________________________TODO??
 
     # compute the vertical bins (the distances)
     nr_bins = np.ceil(np.hypot(*image.shape))
-    bins = np.linspace(-nr_bins/2, nr_bins/2, int(nr_bins)) #TODO___________________endpoint=False?
 
     # allocate the output data
-    out = np.zeros((int(nr_bins), len(theta)), dtype=np.bool_)
-
-    # precompute the sin and cos of the angles
-    cos_theta = np.cos(theta)
-    sin_theta = np.sin(theta)
+    out = np.zeros((int(nr_bins), len(cos_theta)), dtype=np.bool_)
 
     # find the indices of the non-zero values in
     # the input data
@@ -434,7 +408,7 @@ def houghnew(image, theta):
 
         # round the distances to the nearest integer
         # and shift them to a nonzero bin
-        shifted = np.round(distances) - bins[0]
+        shifted = np.round(distances) + nr_bins/2
 
         # cast the shifted values to ints to use as indices
         indices = shifted.astype(np.int)
@@ -444,8 +418,38 @@ def houghnew(image, theta):
 
         # finally assign the proper values to the out array
         out[:len(bincount), i] = bincount
+        #out.T[i] = bincount
 
-    return out, theta, bins
+    return out[np.floor(nr_bins/2), :]
+
+
+def all_thetas(wlen, thetbins):
+    window = circ_kern(wlen)
+    window[:,:wlen//2] = 0
+    wy, wx = window.shape #Parse x/y dimensions
+    ntheta = len(thetbins) #Parse height in theta
+
+
+    # precompute the sin and cos of the angles
+    cos_theta = np.cos(thetbins)
+    sin_theta = np.sin(thetbins)
+    
+    #Makes prism; output has dimensions (x, y, theta)
+    out = np.zeros((wy, wx, ntheta), np.int)
+    coords = zip( *np.nonzero(window))
+
+    for (j, i) in coords:
+        #At each x/y value, create new single-pixel data
+        w_1 = np.zeros((wy, wx), np.float_)
+        w_1[j,i] = 1
+        out[j, i, :] = houghnew(w_1, cos_theta, sin_theta)
+
+    out[:,:,ntheta//2:] = out[::-1,::-1,ntheta//2:] #TODO ____________________________________________________________________________________________ CYLINDER
+    out[:wlen//2+1,:,ntheta//2] = 0
+    out[wlen//2:,:,0] = 0
+
+    return out 
+
 
 def theta_rht(theta_array, uv=False):
     #Maps an XYT cube into a 2D Array of angles- weighted by their significance
@@ -529,29 +533,14 @@ def concat_along_axis_0(memmap_list):
 def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename, message): 
     
     wcntr = int(np.floor(wlen/2))
+    
+    xyt = all_thetas(wlen, theta) #Cylinder of all theta values per point
 
-    #Circular kernels
-    wkernel = circ_kern(wlen)
-    
-    temp_kernel = wkernel.copy()
-    temp_kernel[:,:wlen//2] = 0
-    xyt = all_thetas(temp_kernel, theta) #Cylinder of all theta values per point
-    xyt[:,:,ntheta//2:] = xyt[::-1,::-1,ntheta//2:]
-    xyt[:wlen//2+1,:,ntheta//2] = 0
-    xyt[wlen//2:,:,0] = 0
-
-    
-    for i in range(ntheta)[::9]:
-        plt.imshow(xyt[:,:,i])
-        plt.show()
-    
     #Unsharp masks the whole data set
     masked_udata = umask(data, smr, smr_mask=smr_mask) 
 
     #Hough transform of same-sized circular window of 1's
-    h1 = fast_hough(wkernel, xyt, ntheta) #Length ntheta array
-    
-    #dcube = np.repeat(masked_udata[:,:,np.newaxis], repeats=ntheta, axis=2) #TODO****************
+    h1 = fast_hough(circ_kern(wlen), xyt, ntheta)
 
     #Local function calls are faster than globals
     Hthets = []
@@ -569,11 +558,7 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
         N = len(coords)
         for c in range(N):
             j,i = coords[c]
-
             h = fast_hough(masked_udata[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1], xyt, ntheta)
-            #wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]   #TODO****************
-            #h = npsum(npsum(wcube*xyt,axis=0), axis=0)  #TODO****************
-            
             hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
             hout *= np.greater_equal(hout, frac)
             if np.any(hout):
@@ -600,11 +585,7 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
         N = len(coords)
         for c in range(N):
             j,i = coords[c]
-            
             h = fast_hough(masked_udata[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1], xyt, ntheta)
-            #wcube = dcube[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1, :]    #TODO****************
-            #h = npsum(npsum(wcube*xyt,axis=0), axis=0)     #TODO****************
-            
             hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
             hout *= np.greater_equal(hout, frac)
             if np.any(hout):
@@ -732,7 +713,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
 
     #Spectrum *Length ntheta array of theta power (above the threshold) for whole data*
-    spectrum = np.sum(hthets, axis=0) #[np.sum(theta) for theta in hthets]
+    spectrum = np.sum(hthets, axis=0)
     spectrum_filename = filename + '_spectrum.npy'
     np.save(spectrum_filename, np.array(spectrum))
 
