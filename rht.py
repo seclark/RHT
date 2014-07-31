@@ -21,6 +21,7 @@ import string
 import tempfile 
 import shutil
 import time 
+import fnmatch
 
 #-----------------------------------------------------------------------------------------
 #Initialization 1 of 3: Calculation Parameters
@@ -155,6 +156,11 @@ def center(filepath, shape=(512, 512)):
         return center(filepath, shape=(x//2,y//2))
 
 def putXYT(xyt_filename, hi, hj, hthets, compressed=True): #TODO _______________________________________PARAMETERS
+    #Checks for existing _xyt arrays 
+    #filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+    #existing_xyts = fnmatch.filter(os.listdir(os.path.dirname(os.path.realpath(xyt_filename))), filename+'_xyt??.*')
+    #print existing_xyts
+
     if xyt_filename.endswith('.npz'):
         #IMPLEMENTATION1: Zipped Numpy arrays of Data
         if compressed:
@@ -361,7 +367,7 @@ def umask(data, radius, smr_mask=None):
     if smr_mask == None:
         return bindata
     else:
-        return np.where(smr_mask, bindata, smr_mask)
+        return np.logical_and(smr_mask, bindata) #np.where(smr_mask, bindata, smr_mask)
 
 def fast_hough(in_arr, xyt, ntheta): #TODO_________________________________________#THIS IS ONE BOTTLENECK IN THE CODE
 
@@ -369,15 +375,24 @@ def fast_hough(in_arr, xyt, ntheta): #TODO______________________________________
     assert xyt.ndim == 3
     assert in_arr.shape[0] == xyt.shape[0]
     assert in_arr.shape[1] == xyt.shape[1]
+    assert ntheta == xyt.shape[2]
+
+    #IMPLEMENTATION0: Let python figure out the implementation. (FASTEST)
+    return np.einsum('ijk,ij', xyt, in_arr, dtype=np.int) #TODO_____________________________EINSTEIN SUMMATION
 
     #IMPLEMENTATION1: Copy 2D array into 3D stack, and multiply by other stack (SLOW)
-    #return np.sum(np.sum(np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)*xyt, axis=0), axis=0)
-
+    #cube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)*xyt
+     
     #IMPLEMENTATION2: Broadcast 2D array against 3D stack and multiply (FAST)
-    return np.sum(np.sum( np.multiply( in_arr.reshape((in_arr.shape[0],in_arr.shape[1],1)), xyt) , axis=0), axis=0)
+    #cube = np.multiply( in_arr.reshape((in_arr.shape[0],in_arr.shape[1],1)), xyt).astype(np.float, copy=False)
 
     #IMPLEMENTATION3: Broadcast 2D array against 3D stack and AND them together (VERY FAST)
-    #return np.sum(np.sum( np.logical_and( in_arr.reshape((in_arr.shape[0],in_arr.shape[1],1)), xyt) , axis=0), axis=0)
+    #assert in_arr.dtype == np.bool_ 
+    #assert xyt.dtype == np.bool_  
+    #cube = np.logical_and( in_arr.reshape((in_arr.shape[0],in_arr.shape[1],1)), xyt)
+        
+    #return np.sum(np.sum( cube , axis=0, dtype=np.int), axis=0, dtype=np.float) #WORKS FAST AND DIVIDES PROPERLY
+    #return np.sum(cube, axis=(1,0), dtype=np.int)
 
 def houghnew(image, cos_theta, sin_theta):
     assert image.ndim == 2 
@@ -392,7 +407,7 @@ def houghnew(image, cos_theta, sin_theta):
     nr_bins = np.ceil(np.hypot(*image.shape))
 
     # allocate the output data
-    out = np.zeros((int(nr_bins), len(cos_theta)), dtype=np.bool_)
+    out = np.zeros((int(nr_bins), len(cos_theta)), dtype=np.int)
 
     # find the indices of the non-zero values in
     # the input data
@@ -448,7 +463,7 @@ def all_thetas(wlen, thetbins):
     out[:wlen//2+1,:,ntheta//2] = 0
     out[wlen//2:,:,0] = 0
 
-    return out 
+    return out #.astype(np.bool_)
 
 
 def theta_rht(theta_array, uv=False):
@@ -458,6 +473,19 @@ def theta_rht(theta_array, uv=False):
     xs = theta_array*np.cos(2.0*thetas)    
     rough_angle = 0.5*np.arctan2(np.sum(ys), np.sum(xs)) #EQUATION (7)
     angle = np.pi-math.fmod(rough_angle+np.pi, np.pi) #EQUATION (8) #TODO __________________________________________Is this correct?
+    if not uv:
+        return angle
+    else:
+        return angle, np.cos(angle), np.sin(angle)
+    #OR It can map all arrays to the vector (x, y) of theta power at one point
+    #MADE FOR USE WITH plt.quiver() #TODO
+
+def theta_rht_2pi(theta_array, uv=False):
+    #Maps an XYT cube into a 2D Array of angles- weighted by their significance
+    thetas = np.linspace(0.0, 2*np.pi, len(theta_array), endpoint=False, retstep=False)
+    ys = theta_array*np.sin(thetas)
+    xs = theta_array*np.cos(thetas)    
+    angle = np.arctan2(np.sum(ys), np.sum(xs)) #TODO___________Is this correct?
     if not uv:
         return angle
     else:
@@ -535,12 +563,15 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
     wcntr = int(np.floor(wlen/2))
     
     xyt = all_thetas(wlen, theta) #Cylinder of all theta values per point
-
+    xyt.setflags(write=0)
+    
     #Unsharp masks the whole data set
-    masked_udata = umask(data, smr, smr_mask=smr_mask) 
+    masked_udata = umask(data, smr, smr_mask=smr_mask)
+    masked_udata.setflags(write=0)
 
     #Hough transform of same-sized circular window of 1's
     h1 = fast_hough(circ_kern(wlen), xyt, ntheta)
+    h1.setflags(write=0)
 
     #Local function calls are faster than globals
     Hthets = []
@@ -549,7 +580,8 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
     htapp = Hthets.append
     hiapp = Hi.append
     hjapp = Hj.append
-    npsum = np.sum
+    nptruediv = np.true_divide
+    npge = np.greater_equal
 
     if not BUFFER:
         #Number of RHT operations that will be performed, and their coordinates
@@ -559,8 +591,8 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
         for c in range(N):
             j,i = coords[c]
             h = fast_hough(masked_udata[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1], xyt, ntheta)
-            hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
-            hout *= np.greater_equal(hout, frac)
+            hout = nptruediv(h, h1)
+            hout *= npge(hout, frac)
             if np.any(hout):
                 htapp(hout)
                 hiapp(i)
@@ -586,8 +618,8 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
         for c in range(N):
             j,i = coords[c]
             h = fast_hough(masked_udata[j-wcntr:j+wcntr+1, i-wcntr:i+wcntr+1], xyt, ntheta)
-            hout = np.divide(h, h1) #TODO____________________np.true_divide(h, h1)
-            hout *= np.greater_equal(hout, frac)
+            hout = nptruediv(h, h1) 
+            hout *= npge(hout, frac)
             if np.any(hout):
                 htapp(hout)
                 hiapp(i)
@@ -619,7 +651,7 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
                 del obj
             shutil.rmtree(temp_dir) #Did not work!?
         except:
-            print 'Failed to delete files in:', temp_dir
+            print 'Failed to delete:', temp_dir
         finally:
             return True
             
@@ -642,6 +674,17 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     return: Boolean, if the function succeeded
     '''
+
+    assert frac == float(frac) #Float
+    assert 0 <= frac <= 1 #Fractional
+    
+    assert wlen == int(wlen) #Integer
+    assert wlen > 0 #Positive
+    assert wlen%2 #Odd
+
+    assert smr == int(smr) #Integer
+    assert smr > 0 #Positive
+
     if not is_valid_file(filepath):
         #Checks to see if a file should have the rht applied to it...
         print 'Invalid filepath encountered in rht('+filepath+')...'
@@ -660,7 +703,7 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
         datay, datax = data.shape
 
-        print '2/4::', 'Size:', str(datax)+'x'+str(datay), 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)
+        print '2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)
         
         ntheta = ntheta_w(wlen) #TODO_______________ntheta
         theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True) #____________________________________________________________________________________________ 2*       
@@ -779,15 +822,15 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     #Produce Specific Plots
     masked_udata = umask(data, smr)
     log = np.log(np.where( np.isfinite(data), data, np.ones_like( data) )) #TODO Warnings?
-    #U = np.zeros_like(hi)
-    #V = np.zeros_like(hj)
-    #C = np.zeros((len(U)), dtype=np.float)
-    #coords = zip(hi, hj)
-    #for c in range(len(coords)):
-        #C[c], U[c], V[c] = theta_rht(hthets[c], uv=True)
-    #C /= np.pi 
-    #C *= np.isfinite(C)
-    #np.clip(C, 0.0, 1.0, out=C)
+    U = np.zeros_like(hi)
+    V = np.zeros_like(hj)
+    C = np.zeros((len(U)), dtype=np.float)
+    coords = zip(hi, hj)
+    for c in range(len(coords)):
+        C[c], U[c], V[c] = theta_rht_2pi(hthets[c], uv=True)
+    C /= 2*np.pi 
+    C *= np.isfinite(C)
+    np.clip(C, 0.0, 1.0, out=C)
 
     #Define Convenience Functions
     def cleanup():
@@ -817,9 +860,10 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     #### Quiver plot of theta<RHT> across the image
     #error = 0.0001
     #reduction = np.nonzero( [0.0+error <c< 0.5-error or 0.5+error <c< 1.0-error for c in C] )[::4]
-    #axes[1][0].quiver(hi[reduction], hj[reduction], U[reduction], V[reduction], C[reduction], units='xy', pivot='middle', scale=1.0, cmap='hsv')
-    #axes[1][0].set_ylim([0, datay])
-    #axes[1][0].set_title('Theta<RHT>')
+    reduction = np.nonzero(C)[::4]
+    axes[1][0].quiver(hi[reduction], hj[reduction], U[reduction], V[reduction], C[reduction], units='xy', pivot='middle', scale=1.0, cmap='hsv')
+    axes[1][0].set_ylim([0, datay])
+    axes[1][0].set_title('Theta<RHT>')
 
     #### Save and Clean up
     plt.savefig(filename + '_plot.png')
@@ -846,11 +890,11 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     plt.show()
     cleanup()
     
-    
+    '''
     #---------------------------------------------------------------------- PLOT 3
     print 'Theta Spectrum'
 
-    plt.plot(np.linspace(0.0, 2*180.0, num=ntheta, endpoint=False), spectrum) #___________________________________________________________________________---2*
+    plt.plot(np.linspace(0.0, 2*180.0, num=ntheta, endpoint=False), spectrum) #___________---2*
     #___________________________________TODO SAVE PLOT
     plt.show()
     cleanup()
@@ -861,7 +905,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     plt.polar(np.linspace(0.0, 2*np.pi, num=ntheta, endpoint=False), spectrum)
     plt.show()
     cleanup()
-    
+    '''
 
     '''
     #---------------------------------------------------------------------- PLOT 4
@@ -957,13 +1001,6 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
     #Run RHT Over All Valid Inputs 
     announce(['Fast Rolling Hough Transform by Susan Clark', 'Started for: '+source])
     #TODO batch progress bar
-
-    if not 0 <= frac <= 1:
-        frac = FRAC
-    if not (wlen > 0 and wlen%2):
-        wlen = WLEN
-    if not (smr > 0 and smr%2):
-        smr = SMR
 
     summary = []
     for path in pathlist:
