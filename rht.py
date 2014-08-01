@@ -31,6 +31,8 @@ WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.70 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
 SMR = 15.0 #smoothing radius of unsharp mask function
 
+DOUBLE_SIDED = False #Compute exactly the RHT looking along diameters #False causes it to be single-sided
+
 #-----------------------------------------------------------------------------------------
 #Initialization 2 of 3: Runtime Parameters
 #-----------------------------------------------------------------------------------------
@@ -267,6 +269,7 @@ def bad_pixels(data):
     return data.astype(np.bool)
 
 def all_within_diameter_are_good(data, diameter):
+    assert diameter%2
     r = int(np.floor(diameter/2))
 
     #Base case, 'assume all pixels are bad'
@@ -332,7 +335,7 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
         return data
     else:
         #Mask Needed, cuts away smr radius from bads, then wlen from bads 
-        smr_mask = all_within_diameter_are_good(data, 2*smr)
+        smr_mask = all_within_diameter_are_good(data, 2*smr+1)
         nans = np.empty(data.shape, dtype=np.int).fill(np.nan)
         wlen_mask = all_within_diameter_are_good( np.where(smr_mask, data, nans), wlen)
 
@@ -347,19 +350,20 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
 #Performs a circle-cut of given diameter on inkernel.
 #Outkernel is 0 anywhere outside the window.   
 def circ_kern(diameter):
-    r = int(np.floor(diameter/2))
+    assert diameter%2
+    r = diameter//2 #int(np.floor(diameter/2))
     mnvals = np.indices((diameter, diameter)) - r
     rads = np.hypot(mnvals[0], mnvals[1])
-    return np.less_equal(rads, r)
+    return np.less_equal(rads, r).astype(np.int)
 
 #Unsharp mask. Returns binary data.
 def umask(data, radius, smr_mask=None):
-    kernel = circ_kern(2*radius)
-    outdata = scipy.ndimage.filters.correlate(data, weights=kernel)
+    kernel = circ_kern(2*radius+1)
+    outdata = scipy.ndimage.filters.correlate(data, kernel) #http://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.filters.convolve.html#scipy.ndimage.filters.convolve
 
     #Correlation is the same as convolution here because kernel is symmetric 
     #Our convolution has scaled outdata by sum(kernel), so we will divide out these weights.
-    kernweight = np.sum(np.sum(kernel, axis=0), axis=0)
+    kernweight = np.sum(kernel)
     subtr_data = data - outdata/kernweight
     
     #Convert to binary data
@@ -399,9 +403,9 @@ def houghnew(image, cos_theta, sin_theta):
     assert cos_theta.ndim == 1
     assert sin_theta.ndim == 1
     assert len(cos_theta) == len(sin_theta)
+    assert image.shape[0] == image.shape[1]
 
-    wy, wx = image.shape 
-    wmid = np.floor(wx/2.0) #_____________________________________________TODO??
+    wmid = image.shape[0]//2 #Really means wlen//2
 
     # compute the vertical bins (the distances)
     nr_bins = np.ceil(np.hypot(*image.shape))
@@ -439,31 +443,34 @@ def houghnew(image, cos_theta, sin_theta):
 
 
 def all_thetas(wlen, thetbins):
+    assert thetbins.ndim == 1 
+    assert wlen%2
+
+    #Initialize a circular window of ones
     window = circ_kern(wlen)
-    window[:,:wlen//2] = 0
-    wy, wx = window.shape #Parse x/y dimensions
-    ntheta = len(thetbins) #Parse height in theta
-
-
+    if not DOUBLE_SIDED:
+        window[:,:wlen//2] = 0
+    
     # precompute the sin and cos of the angles
     cos_theta = np.cos(thetbins)
     sin_theta = np.sin(thetbins)
     
     #Makes prism; output has dimensions (x, y, theta)
-    out = np.zeros((wy, wx, ntheta), np.int)
+    ntheta = len(thetbins)
+    out = np.zeros(window.shape+(ntheta,), np.int)
     coords = zip( *np.nonzero(window))
-
     for (j, i) in coords:
         #At each x/y value, create new single-pixel data
-        w_1 = np.zeros((wy, wx), np.float_)
+        w_1 = np.zeros_like(window)
         w_1[j,i] = 1
         out[j, i, :] = houghnew(w_1, cos_theta, sin_theta)
 
-    out[:,:,ntheta//2:] = out[::-1,::-1,ntheta//2:] #TODO ____________________________________________________________________________________________ CYLINDER
-    out[:wlen//2+1,:,ntheta//2] = 0
-    out[wlen//2:,:,0] = 0
+    if not DOUBLE_SIDED:
+        out[:,:,ntheta//2:] = out[::-1,::-1,ntheta//2:] #TODO ____________________________________________________________________________________________ CYLINDER
+        out[:wlen//2+1,:,ntheta//2] = 0
+        out[wlen//2:,:,0] = 0
 
-    return out #.astype(np.bool_)
+    return out 
 
 
 def theta_rht(theta_array, uv=False):
@@ -654,8 +661,6 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
             print 'Failed to delete:', temp_dir
         finally:
             return True
-            
-
 #-----------------------------------------------------------------------------------------
 #Interactive Functions
 #-----------------------------------------------------------------------------------------
