@@ -29,13 +29,15 @@ import fnmatch
 
 WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.70 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
-SMR = 15.0 #smoothing radius of unsharp mask function
+SMR = 15 #smoothing radius of unsharp mask function
 
-DOUBLE_SIDED = False #Compute exactly the RHT looking along diameters #False causes it to be single-sided
+DOUBLE_SIDED = True #Compute exactly the RHT looking along diameters #False causes it to be single-sided
 
 #-----------------------------------------------------------------------------------------
-#Initialization 2 of 3: Runtime Parameters
+#Initialization 2 of 3: Runtime Variable
 #-----------------------------------------------------------------------------------------
+
+OUTPUT = '.' #Directory for RHT output
 
 TEXTWIDTH = 70 #Width of some displayed text objects
 
@@ -123,6 +125,26 @@ def update_progress(progress, message='Progress:', final_message = 'Finished:'):
         print ''
 
 #-----------------------------------------------------------------------------------------
+#Naming Conventions and Converisons
+#-----------------------------------------------------------------------------------------
+#xyt_suffix = '_xyt.fits' #'_xyt.fits'
+
+def output_dir():
+    #Returns the absolute pathname of the directory to place output files in
+    return OUTPUT
+
+def filename_from_path(filepath):
+    #Maintains all characters in path except for those after and including the last period
+    return '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+
+DIGITS = 2 #TODO_______________________________________________________-Limits ouput to 100 files
+'''
+def next_filepath(base_filepath):
+    base_filename = filename_from_path(base_filepath)
+'''
+
+
+#-----------------------------------------------------------------------------------------
 #Image Processing Functions
 #-----------------------------------------------------------------------------------------
 def is_valid_file(filepath):
@@ -131,7 +153,7 @@ def is_valid_file(filepath):
 
     return: Boolean, True ONLY when the data could have rht() applied successfully
     '''
-    excluded_file_endings = ['_xyt.npz', '_backproj.npy', '_spectrum.npy', '_plot.png', '_result.png'] #TODO___More Endings
+    excluded_file_endings = ['_xyt.fits', '_backproj.npy', '_spectrum.npy', '_plot.png', '_result.png'] #TODO___More Endings
     if any([filepath.endswith(e) for e in excluded_file_endings]):
         return False
     
@@ -160,7 +182,7 @@ def center(filepath, shape=(512, 512)):
         up = int(datay//2+y//2)
         down = int(datay//2-y//2)
         cutout = np.array(data[down:up, left:right])
-        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+        filename = filename_from_path(filepath)
         center_filename = filename+'_center.npy'
         np.save(center_filename, cutout)
         return center_filename
@@ -169,7 +191,7 @@ def center(filepath, shape=(512, 512)):
 
 def putXYT(xyt_filename, hi, hj, hthets, wlen=WLEN, smr=SMR, frac=FRAC, compressed=True): #TODO _______________________________________PARAMETERS
     #Checks for existing _xyt arrays 
-    #filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+    #filename = filename_from_path(filepath)
     #existing_xyts = fnmatch.filter(os.listdir(os.path.dirname(os.path.realpath(xyt_filename))), filename+'_xyt??.*')
     #print existing_xyts
 
@@ -189,13 +211,15 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen=WLEN, smr=SMR, frac=FRAC, compress
         cols = fits.ColDefs([Hi, Hj, Hthets])
         tbhdu = fits.BinTableHDU.from_columns(cols)
 
-        #Header
+        #Header Values for RHT Parameters
         prihdr = fits.Header()
         prihdr['WLEN'] = wlen #TODO _______________________________________HEADER VARS
         prihdr['SMR'] = smr
         prihdr['FRAC'] = frac
-        prihdr['NTHETA'] = ntheta
         prihdr['DOUBLE'] = DOUBLE_SIDED
+
+        #Other Header Values
+        prihdr['NTHETA'] = ntheta
 
         #Whole FITS File
         prihdu = fits.PrimaryHDU(header=prihdr)
@@ -206,9 +230,15 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen=WLEN, smr=SMR, frac=FRAC, compress
     else:
         raise ValueError('Supported output types in putXYT include .npz and .fits only')
 
-def getXYT(xyt_filename, rebuild=False, filepath = None):    
+def getXYT(xyt_filename, match_only=False, rebuild=False, filepath=None):    
     #Reads in a .npz file containing coordinate pairs in data space (hi, hj)
     #And Hough space arrays covering theta space at each of those points
+    if not os.path.isfile(xyt_filename):
+        if match_only:
+            return False
+        else:
+            raise ValueError('Input xyt_filename in getXYT matches no existing file')
+
     if xyt_filename.endswith('.npz'):
         data = np.load(xyt_filename, mmap_mode='r') #Allows for reading in very large files!
         Hi = data['hi']
@@ -218,13 +248,11 @@ def getXYT(xyt_filename, rebuild=False, filepath = None):
     elif xyt_filename.endswith('.fits'):
         hdu_list = fits.open(xyt_filename, mode='readonly', memmap=True, save_backup=False, checksum=True)
         header_stuff = hdu_list[0].header
-        print header_stuff
-        ntheta = header_stuff['NTHETA']
 
         data = hdu_list[1].data
-        Hi = data['hi'] #.T[0].astype(np.int)
-        Hj = data['hj']  #.T[1].astype(np.int)
-        Hthets = data['hthets'] #np.array([data[( 'hthets'+str(i) )]  for i in xrange(ntheta)]) #.astype(np.float)
+        Hi = data['hi'] 
+        Hj = data['hj'] 
+        Hthets = data['hthets']
 
     else:
         raise ValueError('Supported input types in getXYT include .npz and .fits only')
@@ -239,7 +267,7 @@ def getXYT(xyt_filename, rebuild=False, filepath = None):
             xyt = np.memmap(tempfile.TemporaryFile(), dtype=DTYPE, mode='w+', shape=(datay, datax, ntheta))
             xyt.fill(0.0)
         else:
-            print 'Warning: Reconstructing very large array in memory! Set BUFFER to True!'
+            print 'Warning: Reconstructing very large array in memory! Set BUFFER to True!' #TODO [y]/n____________________-_
             xyt = np.zeros((datay, datax, ntheta))
         coords = zip(Hj, Hi)
         for c in range(len(coords)):
@@ -248,7 +276,17 @@ def getXYT(xyt_filename, rebuild=False, filepath = None):
         return xyt
     else:
         #Returns the sparse, memory mapped form only
-        return Hi, Hj, Hthets
+        return Hi, Hj, Hthets   
+
+'''
+def factory_matchXYT(wlen=WLEN, smr=SMR, frac=FRAC, double=DOUBLE): #TODO_____________________ Match existing files?
+
+    def matchXYT(xyt_filename):
+        pass
+
+
+    return matchXYT 
+'''
 
 def bad_pixels(data):
     #Returns an array of the same shape as data
@@ -525,6 +563,7 @@ def all_thetas(wlen, thetbins):
     
     #Makes prism; output has dimensions (y, x, theta)
     ntheta = len(thetbins)
+    #outshape = (wlen, wlen, ntheta)
     out = np.zeros(window.shape+(ntheta,), np.int)
     coords = zip( *np.nonzero(window))
     for (j, i) in coords:
@@ -538,10 +577,12 @@ def all_thetas(wlen, thetbins):
         out[:wlen//2+1,:,ntheta//2] = 0
         out[wlen//2:,:,0] = 0
 
-    plt.imshow(out[0])
+    '''
+    plt.imshow(out[:, :, 0])
     plt.show()
-    plt.imshow(out[-1])
+    plt.imshow(out[:, :, 22])
     plt.show()
+    '''
     return out 
 
 
@@ -624,6 +665,8 @@ def concat_along_axis_0(memmap_list):
         bytes_per_shape_in_bytes = elements_per_shape_in_elements * bits_per_element_in_bits // 8
 
         def append_memmaps(a, b):
+            a.flush()
+            a.close()
             c = np.memmap(a.filename, dtype=DTYPE, mode='r+', offset=bytes_per_shape_in_bytes*a.shape[0], shape=b.shape )
             c[:,...] = b[:,...] #Depends on offset correctly allocating new space at end of file
             b.flush()         
@@ -645,6 +688,9 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
     assert smr == int(smr) #Integer
     assert smr > 0 #Positive
     
+    #Needed values
+    r = wlen//2 #int(np.floor(wlen/2))
+
     #Cylinder of all lit pixels along a theta value
     xyt = all_thetas(wlen, theta) 
     xyt.setflags(write=0)
@@ -666,7 +712,7 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
     hjapp = Hj.append
     nptruediv = np.true_divide
     npge = np.greater_equal
-    r = wlen//2 #int(np.floor(wlen/2))
+    
 
     if not BUFFER:
         #Number of RHT operations that will be performed, and their coordinates
@@ -724,21 +770,29 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
 
         #print 'Converting list of buffered hthet arrays into final XYT cube'
         converted_hthets = concat_along_axis_0(temp_files) #Combines memmap objects sequentially
-        putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets) #Saves data
         converted_hthets.flush()
-        #converted_hthets.close() #Did not work?
+        putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets) #Saves data
+        
         del converted_hthets
 
         
-        try:
-            for obj in os.listdir(temp_dir):
-                obj.close()
-                del obj
-            shutil.rmtree(temp_dir) #Did not work!?
-        except:
-            print 'Failed to delete:', temp_dir
-        finally:
-            return True
+        def rmtree_failue(function, path, excinfo):
+            try:
+                #os.listdir(temp_dir):
+                for obj in temp_files: 
+                    #q = file(obj)
+                    #q.close()
+                    #del q
+                    obj.close()
+                    os.remove(obj)
+                os.removedirs(temp_dir)
+            except:
+                print 'Failed to delete:', path 
+
+        shutil.rmtree(temp_dir, ignore_errors=False, onerror=rmtree_failue)
+
+        return True
+
 #-----------------------------------------------------------------------------------------
 #Interactive Functions
 #-----------------------------------------------------------------------------------------
@@ -774,9 +828,8 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         return False
 
     try:
-        filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-        output='.'
-        xyt_filename = os.path.join(output, filename + '_xyt.npz')
+        filename = filename_from_path(filepath)
+        xyt_filename = os.path.join(output_dir(), filename + '_xyt.fits')
 
         if not force and os.path.isfile(xyt_filename):
             return True
@@ -790,9 +843,9 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         
         ntheta = ntheta_w(wlen) #TODO_______________ntheta
         if DOUBLE_SIDED:
-            theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)        
+            theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
         else:
-            theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)
+            theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)
         message = '3/4:: Running RHT...'
         success = window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename, message) #TODO__________________
         
@@ -821,16 +874,18 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     return: Boolean, if the function succeeded
     '''
     #Makes sure relevant files are present! 
-    filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-    xyt_filename = filename + '_xyt.npz'
+    filename = filename_from_path(filepath)
+    xyt_filename = filename + '_xyt.fits'
     required_files = [xyt_filename]
     any_missing = any([not os.path.isfile(f) for f in required_files])
     if any_missing or force:
         #Runs rht(filepath), after clearing old output, since that needs to be done
         for f in required_files:
             try:
+                #Try deleting obsolete output
                 os.remove(f)
             except:
+                #Assume it's not there
                 continue 
         rht(filepath, force=force, wlen=wlen, frac=frac, smr=smr) 
 
@@ -844,10 +899,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         specturm = 
     else:
     '''
-    print 'Hthets shape:', hthets.shape
-    print hthets[0]
-    spectrum = np.sum(hthets, axis=0)
-    print 'Spectrum shape:', spectrum.shape
+    spectrum = np.sum(hthets, axis=0) #TODO___________________________Single/Double-Sided
     spectrum_filename = filename + '_spectrum.npy'
     np.save(spectrum_filename, np.array(spectrum))
 
@@ -882,8 +934,8 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     return: Boolean, if the function succeeded
     '''
     #Makes sure relevant files are present!____________________
-    filename = '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
-    xyt_filename = filename + '_xyt.npz'  #___________________________________________________TODO, Keep all interpreting in Interpret
+    filename = filename_from_path(filepath)
+    xyt_filename = filename + '_xyt.fits'  #___________________________________________________TODO, Keep all interpreting in Interpret
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
     required_files = [backproj_filename, spectrum_filename, xyt_filename]
@@ -892,8 +944,10 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         #Interprets file, after clearing old output, since that needs to be done
         for f in required_files:
             try:
+                #Try deleting obsolete output
                 os.remove(f)
             except:
+                #Assume it's not there
                 continue 
         interpret(filepath, force=force, wlen=wlen, frac=frac, smr=smr) 
 
@@ -949,8 +1003,6 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     axes[0][1].set_title('Sharpened')
 
     #### Quiver plot of theta<RHT> across the image
-    #error = 0.0001
-    #reduction = np.nonzero( [0.0+error <c< 0.5-error or 0.5+error <c< 1.0-error for c in C] )[::4]
     reduction = np.nonzero(C)[::1]
     axes[1][0].quiver(hi[reduction], hj[reduction], U[reduction], V[reduction], C[reduction], units='xy', pivot='middle', scale=2, cmap='hsv')
     axes[1][0].set_ylim([0, datay])
@@ -994,55 +1046,15 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     #---------------------------------------------------------------------- PLOT 4
     #Polar plot of theta power
     print 'Linearity'
+    
     if DOUBLE_SIDED:
-        plt.polar(np.linspace(0.0, np.pi, num=ntheta, endpoint=False), spectrum)
+        modified_spectrum = np.true_divide(np.append(spectrum, spectrum), 2.0) 
+        plt.polar(np.linspace(0.0, 2*np.pi, num=2*ntheta, endpoint=False), modified_spectrum)
     else:
         plt.polar(np.linspace(0.0, 2*np.pi, num=ntheta, endpoint=False), spectrum)
     plt.show()
     cleanup()
     
-
-    '''
-    #---------------------------------------------------------------------- PLOT 4
-    n = 5
-    steps = np.linspace(frac, 1.0, n, endpoint=True, retstep=False)
-    #cmap = 'hot'
-    #from  matplotlib.colors import BoundaryNorm
-    #norm = BoundaryNorm(steps, cmap.N, clip=True)
-
-    xyt_filename = filename + '_xyt.npz'
-    #hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
-    xyt = getXYT(xyt_filename, rebuild=True, filepath=filepath)
-    datay, datax, ntheta = xyt.shape
-    
-    for i in range(n-1):
-        low, high = steps[i], steps[i+1]
-        boolean = np.logical_and( np.greater_equal(xyt, low), np.less(xyt, high) )
-        (ys, xs, zs)  = np.nonzero(boolean)
-        #vectors = transpose((xs, ys, zs))
-        #s = 20*xyt[ys, xs,zs]
-
-        z_arr = np.zeros(ntheta)
-        for a in range(datay):
-            y = np.nonzero(np.equal(ys,a))
-            for b in range(datax):
-                x = np.nonzero(np.equal(xs,b))
-                j = []
-                for index in y:
-                    if index in x:
-                        j.append(index)
-                if len(j) > 0:
-                    j = np.array(j).astype(np.int)
-                    z_arr[-1, zs[j]] = xyt[a, b, zs[j]]
-                    z_arr = np.append(z_arr, np.zeros(ntheta), axis=0)
-
-        axes[1][0].scatter(xs, ys, z_arr) #cmap=cmap, norm=norm)
-        
-    axes[1][0].set_ylim([0, datay-1], auto=True)
-    axes[1][0].set_xlim([0, datax-1], auto=True)
-    axes[1][0].set_zlim([0, ntheta-1], auto=True)
-    axes[1][0].set_title('3D Scatterplot of ThetaRHT')
-    '''
 
     #---------------------------------------------------------------------- PLOTS END
     #Clear all and exit successfully
@@ -1072,12 +1084,10 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
     #Interpret whether the Input is a file or directory, excluding all else
     pathlist = []
     if os.path.isfile(source):
-        #Input = File
-        #print 'File Detected'
+        #Input = File 
         pathlist.append(source)
     elif os.path.isdir(source):
-        #Input = Directory
-        #print 'Directory Detected'
+        #Input = Directory 
         for obj in os.listdir(source):
             obj_path = os.path.join(source, obj)
             if os.path.isfile(obj_path):
@@ -1155,7 +1165,7 @@ MULTIPLE ARGS:
 
   Flags: 
   -d  #Ouput is to be Displayed
-  -f  #Exisitng _xyt.npz is to be Forcefully overwritten
+  -f  #Exisitng _xyt.fits is to be Forcefully overwritten
 
   Params:
   -wlen=value  #Sets window diameter
