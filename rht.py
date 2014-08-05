@@ -7,21 +7,18 @@
 #-----------------------------------------------------------------------------------------
 from __future__ import division #Must be first line of code in the file
 from astropy.io import fits
-#from scipy.stats import norm
-#from mpl_toolkits.mplot3d import Axes3D
-#from mayavi import mlab
-#from astropy import wcs
-import numpy as np
 import scipy.ndimage
 import math
 import os
-import matplotlib.pyplot as plt
 import sys
 import string
 import tempfile 
 import shutil
 import time 
 import fnmatch
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 #-----------------------------------------------------------------------------------------
 #Initialization 1 of 3: Calculation Parameters
@@ -37,8 +34,13 @@ DOUBLE_SIDED = True #Compute exactly the RHT looking along diameters #False caus
 #Initialization 2 of 3: Runtime Variable
 #-----------------------------------------------------------------------------------------
 
+#Output Formatting
 OUTPUT = '.' #Directory for RHT output
+xyt_format = '.fits' #'.npz' #Numpy arrays will be compressed, but fits are more standardized
+xyt_suffix = '_xyt' #Arbitrary name indicating the output of the RHT accumulator array 
+DIGITS = 2 #Limits ouput to 100 files (_xyt00.fits to _xyt99.fits)
 
+#User Interface
 TEXTWIDTH = 70 #Width of some displayed text objects
 
 #Allows processing of larger files than RAM alone would allow
@@ -127,17 +129,50 @@ def update_progress(progress, message='Progress:', final_message = 'Finished:'):
 #-----------------------------------------------------------------------------------------
 #Naming Conventions and Converisons
 #-----------------------------------------------------------------------------------------
-#xyt_suffix = '_xyt.fits' #'_xyt.fits'
-
-def output_dir():
-    #Returns the absolute pathname of the directory to place output files in
-    return OUTPUT
 
 def filename_from_path(filepath):
     #Maintains all characters in path except for those after and including the last period
     return '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
 
-DIGITS = 2 #TODO_______________________________________________________-Limits ouput to 100 files
+def xyt_name_factory(filepath, wlen, smr, frac, double=DOUBLE_SIDED):
+    #Returns the filename that _xyt output should have.
+    #Will have the general behavior: filename_xyt00.format
+
+    filename = filename_from_path(filepath)
+    fnmatch_string = filename + xyt_suffix + '?'*DIGITS + xyt_format #TODO____________________ADAPT TO AND CLEAN UP DIFFERENT DIGITS
+    xyt_files = fnmatch.filter(os.listdir(OUTPUT), fnmatch_string) 
+    xyt_array = [None]*(10**DIGITS) 
+
+    #Tries to find a parameter match among existing files
+    left = len(filename+xyt_suffix)
+    right = left + DIGITS
+    for x in xyt_files:
+        if getXYT(os.path.join(OUTPUT, x), match_only={'WLEN':wlen, 'SMR':smr, 'FRAC':frac, 'DOUBLE':double} ): #TODO _______________________________________________________________________________________________________________________________
+            print 'Found _xyt file matching your input parameters!'
+            return os.path.join(OUTPUT, x)
+        else:
+            xyt_array[int( x[left:right] )] = x
+    
+    #Tries to find the lowest-numbered name that is unoccupied
+    for i, y in enumerate(xyt_array):
+        if y is None:
+            print 'Found _xyt available for these parameters!'
+            int_string = string.rjust(str(i), DIGITS, '0')[:DIGITS]
+            return os.path.join(OUTPUT, filename+ xyt_suffix+ int_string+ xyt_format )   
+    
+    #Failure: No match and no available output slots
+    xyt_filename = string.replace(fnmatch_string, '?', '0') #Filename0
+    print 'In xyt_filename(): No existing ouput matches the input parameters and no namespace is available'
+    print 'Overwrite ' + xyt_filename + '?..' 
+    choice = raw_input(' [y]/n/'+'0'*DIGITS)
+    if len(choice) == 0 or choice == 'y':
+        return os.path.join(OUTPUT, xyt_filename)
+    elif choice != 'n':
+        int_string = string.rjust(str(i), DIGITS, '0')[:DIGITS]
+        return os.path.join(OUTPUT, filename+ xyt_suffix+ int_string+ xyt_format )   
+    else:
+        raise RuntimeError('In xyt_filename(): No existing ouput matches the input parameters and no namespace is available')
+
 '''
 def next_filepath(base_filepath):
     base_filename = filename_from_path(base_filepath)
@@ -198,9 +233,9 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen=WLEN, smr=SMR, frac=FRAC, compress
     if xyt_filename.endswith('.npz'):
         #IMPLEMENTATION1: Zipped Numpy arrays of Data
         if compressed:
-            np.savez_compressed(xyt_filename, hi=hi, hj=hj, hthets=hthets)  #TODO _______________________________________HEADER VARS
+            np.savez_compressed(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=DOUBLE_SIDED)  #TODO _______________________________________HEADER VARS
         else:
-            np.savez(xyt_filename, hi=hi, hj=hj, hthets=hthets)
+            np.savez(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=DOUBLE_SIDED)
 
     elif xyt_filename.endswith('.fits'):
         #IMPLEMENTATION2: FITS Table File
@@ -244,10 +279,20 @@ def getXYT(xyt_filename, match_only=False, rebuild=False, filepath=None):
         Hi = data['hi']
         Hj = data['hj']
         Hthets = data['hthets']
+        if match_only:
+            try:
+                return all([ match_only[x] == data[string.lower(x)] for x in match_only.keys() ])
+            except KeyError:
+                return False
 
     elif xyt_filename.endswith('.fits'):
         hdu_list = fits.open(xyt_filename, mode='readonly', memmap=True, save_backup=False, checksum=True)
-        header_stuff = hdu_list[0].header
+        header = hdu_list[0].header
+        if match_only:
+            #try:
+            return all([ match_only[x] == header[string.upper(x)] for x in match_only.keys() ])
+            #except KeyError:
+            #return False
 
         data = hdu_list[1].data
         Hi = data['hi'] 
@@ -278,15 +323,6 @@ def getXYT(xyt_filename, match_only=False, rebuild=False, filepath=None):
         #Returns the sparse, memory mapped form only
         return Hi, Hj, Hthets   
 
-'''
-def factory_matchXYT(wlen=WLEN, smr=SMR, frac=FRAC, double=DOUBLE): #TODO_____________________ Match existing files?
-
-    def matchXYT(xyt_filename):
-        pass
-
-
-    return matchXYT 
-'''
 
 def bad_pixels(data):
     #Returns an array of the same shape as data
@@ -828,12 +864,9 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         return False
 
     try:
-        filename = filename_from_path(filepath)
-        xyt_filename = os.path.join(output_dir(), filename + '_xyt.fits')
-
+        xyt_filename = xyt_name_factory(filepath, wlen, smr, frac, double=DOUBLE_SIDED)
         if not force and os.path.isfile(xyt_filename):
             return True
-            #TODO CHECK WHETHER AN OUTPUT EXISTS WITH THIS PARAMETER INPUT FIRST!! ______________________________________________
 
         print '1/4:: Retrieving Data from:', filepath
         data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
