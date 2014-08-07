@@ -7,6 +7,7 @@
 #-----------------------------------------------------------------------------------------
 from __future__ import division #Must be first line of code in the file
 from astropy.io import fits
+
 import scipy.ndimage
 import math
 import os
@@ -16,6 +17,7 @@ import tempfile
 import shutil
 import time 
 import fnmatch
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -28,7 +30,7 @@ WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.70 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
 SMR = 15 #smoothing radius of unsharp mask function
 
-DOUBLE_SIDED = True #Compute exactly the RHT looking along diameters #False causes it to be single-sided
+ORIGINAL = True #Compute exactly the RHT looking along diameters #False causes it to be single-sided
 
 #-----------------------------------------------------------------------------------------
 #Initialization 2 of 3: Runtime Variable
@@ -75,7 +77,7 @@ def announcement(strings):
 def announce(strings):
     print announcement(strings)
 
-def update_progress(progress, message='Progress:', final_message = 'Finished:'):
+def update_progress(progress, message='Progress:', final_message='Finished:'):
     #Create progress meter that looks like: 
     #message + ' ' + '[' + '#'*p + ' '*(length-p) + ']' + time_message
 
@@ -132,52 +134,53 @@ def update_progress(progress, message='Progress:', final_message = 'Finished:'):
 
 def filename_from_path(filepath):
     #Maintains all characters in path except for those after and including the last period
-    return '.'.join( filepath.split('.')[ 0:filepath.count('.') ] )
+    return os.path.basename('.'.join( filepath.split('.')[ 0:filepath.count('.') ] ) ) 
 
-def xyt_name_factory(filepath, wlen, smr, frac, double=DOUBLE_SIDED):
+def xyt_name_factory(filepath, wlen, smr, frac, double=ORIGINAL):
     #Returns the filename that _xyt output should have.
     #Will have the general behavior: filename_xyt00.format
 
-    filename = filename_from_path(filepath)
+    #filepath ~ dirname/name.fits
+    #filename ~ dirname/name
+    #fnmatch_string ~ name + xyt_suffix + ?? + xyt_format
+
+    filename = filename_from_path(filepath) #Removes RHT-specific endings
+    dirname = os.path.dirname(os.path.abspath(filepath))
     fnmatch_string = filename + xyt_suffix + '?'*DIGITS + xyt_format #TODO____________________ADAPT TO AND CLEAN UP DIFFERENT DIGITS
-    xyt_files = fnmatch.filter(os.listdir(OUTPUT), fnmatch_string) 
+    xyt_files = fnmatch.filter(os.listdir(dirname), fnmatch_string) 
     xyt_array = [None]*(10**DIGITS) 
 
     #Tries to find a parameter match among existing files
-    left = len(filename+xyt_suffix)
-    right = left + DIGITS
+    left = string.find(fnmatch_string, '?')
     for x in xyt_files:
-        if getXYT(os.path.join(OUTPUT, x), match_only={'WLEN':wlen, 'SMR':smr, 'FRAC':frac, 'DOUBLE':double} ): #TODO _______________________________________________________________________________________________________________________________
-            print 'Found _xyt file matching your input parameters!'
-            return os.path.join(OUTPUT, x)
+        abs_x = os.path.join(dirname, x)
+        if getXYT(abs_x, match_only={'WLEN':wlen, 'SMR':smr, 'FRAC':frac, 'DOUBLE':double} ): #TODO _______________________________________________________________________________________________________________________________
+            #print 'Found _xyt file matching your input parameters!'
+            return os.path.normpath(abs_x)
         else:
-            xyt_array[int( x[left:right] )] = x
+            xyt_array[int( x[left:(left+DIGITS)] )] = x
     
     #Tries to find the lowest-numbered name that is unoccupied
     for i, y in enumerate(xyt_array):
         if y is None:
-            print 'Found _xyt available for these parameters!'
-            int_string = string.rjust(str(i), DIGITS, '0')[:DIGITS]
-            return os.path.join(OUTPUT, filename+ xyt_suffix+ int_string+ xyt_format )   
+            #print 'Found _xyt available for these parameters!'
+            int_string = string.zfill(str(i), DIGITS)[:DIGITS] 
+            xyt_filename = filename+ xyt_suffix+ int_string+ xyt_format
+            return os.path.normpath(os.path.join(dirname, xyt_filename))
     
     #Failure: No match and no available output slots
     xyt_filename = string.replace(fnmatch_string, '?', '0') #Filename0
     print 'In xyt_filename(): No existing ouput matches the input parameters and no namespace is available'
     print 'Overwrite ' + xyt_filename + '?..' 
-    choice = raw_input(' [y]/n/'+'0'*DIGITS)
+    choice = raw_input(' [y]/n/'+'0'*(DIGITS-1)+'x')
     if len(choice) == 0 or choice == 'y':
-        return os.path.join(OUTPUT, xyt_filename)
+        return os.path.normpath(os.path.join(dirname, xyt_filename))
     elif choice != 'n':
-        int_string = string.rjust(str(i), DIGITS, '0')[:DIGITS]
-        return os.path.join(OUTPUT, filename+ xyt_suffix+ int_string+ xyt_format )   
+        int_string = string.zfill(str(int(choice)), DIGITS)[:DIGITS] 
+        xyt_filename = filename+ xyt_suffix+ int_string+ xyt_format
+        return os.path.normpath(os.path.join(dirname, xyt_filename)) 
     else:
         raise RuntimeError('In xyt_filename(): No existing ouput matches the input parameters and no namespace is available')
-
-'''
-def next_filepath(base_filepath):
-    base_filename = filename_from_path(base_filepath)
-'''
-
 
 #-----------------------------------------------------------------------------------------
 #Image Processing Functions
@@ -224,7 +227,7 @@ def center(filepath, shape=(512, 512)):
     else:
         return center(filepath, shape=(x//2,y//2))
 
-def putXYT(xyt_filename, hi, hj, hthets, wlen=WLEN, smr=SMR, frac=FRAC, compressed=True): #TODO _______________________________________PARAMETERS
+def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compressed=True): #TODO _______________________________________PARAMETERS
     #Checks for existing _xyt arrays 
     #filename = filename_from_path(filepath)
     #existing_xyts = fnmatch.filter(os.listdir(os.path.dirname(os.path.realpath(xyt_filename))), filename+'_xyt??.*')
@@ -233,9 +236,14 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen=WLEN, smr=SMR, frac=FRAC, compress
     if xyt_filename.endswith('.npz'):
         #IMPLEMENTATION1: Zipped Numpy arrays of Data
         if compressed:
-            np.savez_compressed(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=DOUBLE_SIDED)  #TODO _______________________________________HEADER VARS
+            save = np.savez_compressed  #TODO _______________________________________HEADER VARS
         else:
-            np.savez(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=DOUBLE_SIDED)
+            save = np.savez
+        if backproj is None:
+            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=ORIGINAL, ntheta=hthets.shape[1])
+        else:
+            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=ORIGINAL, ntheta=hthets.shape[1], backproj=backproj)
+
 
     elif xyt_filename.endswith('.fits'):
         #IMPLEMENTATION2: FITS Table File
@@ -251,13 +259,13 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen=WLEN, smr=SMR, frac=FRAC, compress
         prihdr['WLEN'] = wlen #TODO _______________________________________HEADER VARS
         prihdr['SMR'] = smr
         prihdr['FRAC'] = frac
-        prihdr['DOUBLE'] = DOUBLE_SIDED
+        prihdr['DOUBLE'] = ORIGINAL
 
         #Other Header Values
         prihdr['NTHETA'] = ntheta
 
         #Whole FITS File
-        prihdu = fits.PrimaryHDU(header=prihdr)
+        prihdu = fits.PrimaryHDU(data=backproj, header=prihdr)
         thdulist = fits.HDUList([prihdu, tbhdu])
         thdulist.writeto(xyt_filename, output_verify='silentfix', clobber=True, checksum=True)
 
@@ -273,34 +281,34 @@ def getXYT(xyt_filename, match_only=False, rebuild=False, filepath=None):
             return False
         else:
             raise ValueError('Input xyt_filename in getXYT matches no existing file')
-
-    if xyt_filename.endswith('.npz'):
-        data = np.load(xyt_filename, mmap_mode='r') #Allows for reading in very large files!
-        Hi = data['hi']
-        Hj = data['hj']
-        Hthets = data['hthets']
-        if match_only:
-            try:
-                return all([ match_only[x] == data[string.lower(x)] for x in match_only.keys() ])
-            except KeyError:
-                return False
-
-    elif xyt_filename.endswith('.fits'):
-        hdu_list = fits.open(xyt_filename, mode='readonly', memmap=True, save_backup=False, checksum=True)
-        header = hdu_list[0].header
-        if match_only:
-            #try:
-            return all([ match_only[x] == header[string.upper(x)] for x in match_only.keys() ])
-            #except KeyError:
-            #return False
-
-        data = hdu_list[1].data
-        Hi = data['hi'] 
-        Hj = data['hj'] 
-        Hthets = data['hthets']
-
     else:
-        raise ValueError('Supported input types in getXYT include .npz and .fits only')
+        if xyt_filename.endswith('.npz'):
+            data = np.load(xyt_filename, mmap_mode='r') #Allows for reading in very large files!
+            Hi = data['hi']
+            Hj = data['hj']
+            Hthets = data['hthets']
+            if match_only:
+                try:
+                    return all([ match_only[x] == data[string.lower(x)] for x in match_only.keys() ])
+                except KeyError:
+                    return False
+
+        elif xyt_filename.endswith('.fits'):
+            hdu_list = fits.open(xyt_filename, mode='readonly', memmap=True, save_backup=False, checksum=True)
+            header = hdu_list[0].header
+            if match_only:
+                try:
+                    return all([ match_only[x] == header[string.upper(x)] for x in match_only.keys() ])
+                except KeyError:
+                    return False
+
+            data = hdu_list[1].data
+            Hi = data['hi'] 
+            Hj = data['hj'] 
+            Hthets = data['hthets']
+
+        else:
+            raise ValueError('Supported input types in getXYT include .npz and .fits only')
 
     #Formats output properly
     if rebuild and filepath is not None:
@@ -331,43 +339,45 @@ def bad_pixels(data):
     data = np.array(data, np.float)
     
     #IMPLEMENTATION1: Do Comparisons which are VERY different depending on boolean choices 
-    if BAD_INF:
-        if BAD_0:
-            if BAD_Neg:
-                return np.logical_or(np.logical_not(np.isfinite(data)), np.less_equal(0.0))
-            else:    
-                return np.logical_or( np.logical_not( np.isfinite(data) ), np.logical_not(data) )
+    try:
+        if BAD_INF:
+            if BAD_0:
+                if BAD_Neg:
+                    return np.logical_or(np.logical_not(np.isfinite(data)), np.less_equal(data, 0.0))
+                else:    
+                    return np.logical_or(np.logical_not(np.isfinite(data)), np.equal(data, 0.0))
+            else:
+                if BAD_Neg:
+                    return np.logical_or(np.logical_not(np.isfinite(data)), np.less(data, 0.0))
+                else:    
+                    return np.logical_not(np.isfinite(data))
         else:
-            if BAD_Neg:
-                return np.logical_or(np.logical_not(np.isfinite(data)), np.less(0.0))
-            else:    
-                return np.logical_not(np.isfinite(data))
-    else:
-        if BAD_0:
-            if BAD_Neg:
-                return np.logical_or(np.isnan(data), np.less_equal(0.0))
-            else:    
-                return np.logical_not(np.nan_to_num(data)) #(Nans or 0) ---> (0) ---> (1)
-        else:
-            if BAD_Neg:
-                return np.logical_or(np.isnan(data), np.less(0.0))
-            else:    
-                return np.isnan(data)
-    '''
-    #IMPLEMENTATION2: Map values determined by flags into the data array
-    not_that = np.zeros_like(data)
-    infs = np.empty_like(data).fill(BAD_INF)
-    zeros = np.empty_like(data).fill(BAD_0)
-    negs = np.empty_like(data).fill(BAD_Neg)
-    
-    isinf = np.where(np.isinf(data), infs, not_that)
-    iszero = np.where(np.logical_not(data), zeros, not_that)
-    isneg = np.where(np.less(0.0), negs, not_that)
-    return np.logical_or(np.isnan(data), np.logical_or(isinf, np.logical_or(iszero, isneg)))
-    '''
-    #IMPLEMENTATION3: Give up?
-    print 'Unable to properly mask data in bad_pixels()...'
-    return data.astype(np.bool)
+            if BAD_0:
+                if BAD_Neg:
+                    return np.logical_or(np.isnan(data), np.less_equal(data, 0.0))
+                else:    
+                    return np.logical_not(np.nan_to_num(data)) #(Nans or 0) ---> (0) ---> (1)
+            else:
+                if BAD_Neg:
+                    return np.logical_or(np.isnan(data), np.less(data, 0.0))
+                else:    
+                    return np.isnan(data)
+        '''
+        #IMPLEMENTATION2: Map values determined by flags into the data array
+        not_that = np.zeros_like(data)
+        infs = np.empty_like(data).fill(BAD_INF)
+        zeros = np.empty_like(data).fill(BAD_0)
+        negs = np.empty_like(data).fill(BAD_Neg)
+        
+        isinf = np.where(np.isinf(data), infs, not_that)
+        iszero = np.where(np.logical_not(data), zeros, not_that)
+        isneg = np.where(np.less(0.0), negs, not_that)
+        return np.logical_or(np.isnan(data), np.logical_or(isinf, np.logical_or(iszero, isneg)))
+        '''
+    except:
+        #IMPLEMENTATION3: Give up?
+        print 'Unable to properly mask data in bad_pixels()...'
+        return data.astype(np.bool)
 
 def all_within_diameter_are_good(data, diameter):
     assert diameter%2
@@ -387,12 +397,15 @@ def all_within_diameter_are_good(data, diameter):
     x_arr = x_arr - r
 
     #IMPLEMENTATION1: Zero any mask pixel within r of a bad pixel
+    update_progress(0.0)
     coords = zip(*np.nonzero(bad_pixels(data)))
-    for c in range(len(coords)):    
+    N = len(coords)
+    for c in range(N):    
         j,i = coords[c]
         x = (x_arr + i).astype(np.int).clip(0, datax-1)
         y = (y_arr + j).astype(np.int).clip(0, datay-1)
-        mask[y, x] = 0
+        mask[y, x] = 0 
+        update_progress((c+1)/float(N), message='Masking:', final_message='Finished Masking:') #TODO_______________________________________________________________Progress Bar
     '''
     #IMPLEMENTATION2: For each good pixel, 'Not Any Bad pixels near me'
     coords = zip(*np.nonzero(mask))
@@ -403,22 +416,6 @@ def all_within_diameter_are_good(data, diameter):
         mask[j][i] = np.logical_not(np.any(bad_pixels( data[y, x] )))
     '''
     return mask 
-
-'''
-try:
-    ###Works, but without performance increase
-    from numba import autojit
-    all_within_diameter_are_good = autojit(all_within_diameter_are_good)
-
-    ###
-    #import numba
-    #from numba.types import i1, f4
-    #fast_hough = numba.jit(signature_or_function=fast_hough, argtypes=['f4[:](i1[:,:], i1[:,:,:], i1)'], target='cpu')(fast_hough)
-    print 'Autojit is go for all_within_diameter_are_good!'
-except:
-    print 'Failure to autojit all_within_diameter_are_good..'
-    #raise
-'''
 
 def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
     #Reads in and makes proper masks for images from various sources
@@ -501,6 +498,7 @@ def fast_hough(in_arr, xyt): #, hout=None): #TODO_______________________________
 
     #IMPLEMENTATION0: Let python figure out the implementation. (FASTEST)
     return np.einsum('ijk,ij', xyt, in_arr)
+    
     '''
     if hout == None:
         return np.einsum('ijk,ij', xyt, in_arr) #, dtype=np.int) #TODO_____________________________EINSTEIN SUMMATION
@@ -523,6 +521,15 @@ def fast_hough(in_arr, xyt): #, hout=None): #TODO_______________________________
     #return np.sum(np.sum( cube , axis=0, dtype=np.int), axis=0, dtype=np.float) #WORKS FAST AND DIVIDES PROPERLY
     #return np.sum(cube, axis=(1,0), dtype=np.int)
 
+'''
+try:
+    from cython_hough import fast_hough as new_fast_hough 
+    print 'Fast Hough Compiled in C'
+    fast_hough = new_fast_hough
+except:
+    pass
+'''
+    
 '''
 try:
     ###Works, but without performance increase
@@ -590,7 +597,7 @@ def all_thetas(wlen, thetbins):
     #Initialize a circular window of ones
     window = circ_kern(wlen)
     assert window.shape[0] == window.shape[1]
-    if not DOUBLE_SIDED:
+    if not ORIGINAL:
         window[:,:wlen//2] = 0
     
     # precompute the sin and cos of the angles
@@ -608,7 +615,7 @@ def all_thetas(wlen, thetbins):
         w_1[j,i] = 1
         out[j, i, :] = houghnew(w_1, cos_theta, sin_theta)
 
-    if not DOUBLE_SIDED:
+    if not ORIGINAL:
         out[:,:,ntheta//2:] = out[::-1,::-1,ntheta//2:] #TODO _______________________________________________ CYLINDER
         out[:wlen//2+1,:,ntheta//2] = 0
         out[wlen//2:,:,0] = 0
@@ -616,7 +623,7 @@ def all_thetas(wlen, thetbins):
     '''
     plt.imshow(out[:, :, 0])
     plt.show()
-    plt.imshow(out[:, :, 22])
+    plt.imshow(out[:, :, 1])
     plt.show()
     '''
     return out 
@@ -624,7 +631,7 @@ def all_thetas(wlen, thetbins):
 
 def theta_rht(theta_array, uv=False):
     #Maps an XYT cube into a 2D Array of angles- weighted by their significance
-    if DOUBLE_SIDED:
+    if ORIGINAL:
         thetas = np.linspace(0.0, np.pi, len(theta_array), endpoint=False, retstep=False)
         ys = theta_array*np.sin(2.0*thetas)
         xs = theta_array*np.cos(2.0*thetas)    
@@ -712,7 +719,7 @@ def concat_along_axis_0(memmap_list):
 
         return reduce(append_memmaps, others, initializer=seed)
 
-def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename, message): 
+def window_step(data, wlen, frac, smr, smr_mask, wlen_mask, xyt_filename, message): 
 
     assert frac == float(frac) #Float
     assert 0 <= frac <= 1 #Fractional
@@ -725,7 +732,12 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
     assert smr > 0 #Positive
     
     #Needed values
-    r = wlen//2 #int(np.floor(wlen/2))
+    r = wlen//2 
+    ntheta = ntheta_w(wlen)
+    if ORIGINAL:
+        theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
+    else:
+        theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)
 
     #Cylinder of all lit pixels along a theta value
     xyt = all_thetas(wlen, theta) 
@@ -749,11 +761,13 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
     nptruediv = np.true_divide
     npge = np.greater_equal
     
-
+    #Bonus Backprojection Creation
+    backproj = np.zeros_like(data)
+    
     if not BUFFER:
         #Number of RHT operations that will be performed, and their coordinates
         coords = zip( *np.nonzero( wlen_mask))
-        update_progress(0.0, message)
+        update_progress(0.0)
         N = len(coords)
         for c in range(N):
             j,i = coords[c]
@@ -764,9 +778,10 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
                 htapp(hout)
                 hiapp(i)
                 hjapp(j)
-            update_progress((c+1)/float(N), message)
+                backproj[j][i] = np.sum(hout) 
+            update_progress((c+1)/float(N), message=message, final_message=message)
             #End
-        putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets)) #Saves data
+        putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets), wlen, smr, frac, backproj=np.divide(backproj, np.amax(backproj)) ) #Saves data
         return True 
 
     else:
@@ -776,10 +791,10 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
         buffer_shape = buffershape(ntheta) #variable_length, ntheta
         def next_temp_filename():
             return os.path.join(temp_dir, 'rht'+ str(len(temp_files)) + '.dat')
-        print 'Temporary files in:', temp_dir 
+        #print 'Temporary files in:', temp_dir 
 
         #Number of RHT operations that will be performed, and their coordinates
-        update_progress(0.0, message)
+        update_progress(0.0)
         coords = zip( *np.nonzero( wlen_mask))
         N = len(coords)
         for c in range(N):
@@ -791,12 +806,13 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
                 htapp(hout)
                 hiapp(i)
                 hjapp(j)
+                backproj[j][i] = np.sum(hout) 
                 if len(Hthets) == buffer_shape[0]:
                     temp_files.append( np.memmap( next_temp_filename(), dtype=DTYPE, mode='w+', shape=buffer_shape )) #Creates full memmap object
                     theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
                     temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
                     Hthets = [] #Reset Hthets
-            update_progress((c+1)/float(N), message)
+            update_progress((c+1)/float(N), message=message, final_message=message)
             #End
 
         if len(Hthets) > 0:
@@ -807,7 +823,7 @@ def window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_f
         #print 'Converting list of buffered hthet arrays into final XYT cube'
         converted_hthets = concat_along_axis_0(temp_files) #Combines memmap objects sequentially
         converted_hthets.flush()
-        putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets) #Saves data
+        putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets, wlen, smr, frac, backproj=np.divide(backproj, np.amax(backproj)) ) #Saves data
         
         del converted_hthets
 
@@ -864,7 +880,8 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         return False
 
     try:
-        xyt_filename = xyt_name_factory(filepath, wlen, smr, frac, double=DOUBLE_SIDED)
+        xyt_filename = xyt_name_factory(filepath, wlen, smr, frac, double=ORIGINAL)
+        
         if not force and os.path.isfile(xyt_filename):
             return True
 
@@ -874,13 +891,8 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
         print '2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)
         
-        ntheta = ntheta_w(wlen) #TODO_______________ntheta
-        if DOUBLE_SIDED:
-            theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
-        else:
-            theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)
         message = '3/4:: Running RHT...'
-        success = window_step(data, wlen, frac, smr, theta, ntheta, smr_mask, wlen_mask, xyt_filename, message) #TODO__________________
+        success = window_step(data, wlen, frac, smr, smr_mask, wlen_mask, xyt_filename, message) #TODO__________________
         
 
         print '4/4:: Successfully Saved Data As', xyt_filename
@@ -927,7 +939,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     #Spectrum *Length ntheta array of theta power (above the threshold) for whole data*
     '''
-    if DOUBLE_SIDED:
+    if ORIGINAL:
         theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)
         specturm = 
     else:
@@ -1004,7 +1016,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     for c in range(len(coords)):
         C[c], U[c], V[c] = theta_rht(hthets[c], uv=True)
     C *= np.isfinite(C)
-    if DOUBLE_SIDED:
+    if ORIGINAL:
         C /= np.pi
     else:
         C /= 2*np.pi 
@@ -1080,7 +1092,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     #Polar plot of theta power
     print 'Linearity'
     
-    if DOUBLE_SIDED:
+    if ORIGINAL:
         modified_spectrum = np.true_divide(np.append(spectrum, spectrum), 2.0) 
         plt.polar(np.linspace(0.0, 2*np.pi, num=2*ntheta, endpoint=False), modified_spectrum)
     else:

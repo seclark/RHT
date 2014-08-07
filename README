@@ -7,21 +7,19 @@ This is the Rolling Hough Transform, described in Clark, Peek, Putman 2014 (arXi
 ==================================
 Requirements (Python 2.7 Only)
 ==================================
-from __future__ import division
+from __future__ import division #Must be first line of code in the file
 from astropy.io import fits
-#from scipy.stats import norm
-#from mpl_toolkits.mplot3d import Axes3D
-#from mayavi import mlab
-#from astropy import wcs
-import numpy as np
 import scipy.ndimage
 import math
 import os
-import matplotlib.pyplot as plt
 import sys
 import string
 import tempfile 
 import shutil
+import time 
+import fnmatch
+import matplotlib.pyplot as plt
+import numpy as np
 
 ==================================
 Instructions For Use (Python)
