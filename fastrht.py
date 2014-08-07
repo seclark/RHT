@@ -246,8 +246,6 @@ def houghnew(img, theta=None, idl=False):
 
 def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask): 
 
-                    
-
     update_progress(0.0)
     
     #Circular kernels
@@ -273,7 +271,6 @@ def window_step(data, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask):
     #end0 = time.clock()
     #print 'cube data', end0-start0 
     
-
     htapp = Hthets.append
     hiapp = Hi.append
     hjapp = Hj.append

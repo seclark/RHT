@@ -2,92 +2,61 @@
 
 #Lowell Schudel
 #Execute 'python speedtest.py'
-#speedtest.py compares fastrht_prof.py and fastrhtOLD_prof.py
-#Both will use a single test image, smalltest.fits
-#Both will use the speedtest.getData() and speedtest.setParams() function
-#Neither will write their output to file
 
-#Imports
-import timeit
+from __future__ import division
 import numpy as np
-import math
-import copy
-from astropy.io import fits
+import rht
+import time
+import timeit
+from matplotlib.pyplot import plot, show
+
+WLEN = range(9,250,12)[::-1]
+time_a = []
+time_b = []
+
+N = 50
+DTYPE = np.int
+
+def func_a(two_d, three_d): 
+    #IMPLEMENTATION1: Let python figure out the implementation.
+    return np.einsum('ijk,ij', three_d, two_d, dtype=DTYPE)
+
+def func_b(two_d, three_d):
+    #assert two_d.dtype == np.bool_ 
+    #assert three_d.dtype == np.bool_  
+    #IMPLEMENTATION3: Broadcast 2D array against 3D stack and AND them together (VERY FAST)
+    return np.sum( np.logical_and( two_d.reshape((two_d.shape[0],two_d.shape[1],1)) , three_d) , axis=(1,0), dtype=DTYPE)
+    #return np.sum(np.sum( np.logical_and( two_d.reshape((two_d.shape[0],two_d.shape[1],1)) , three_d) , axis=0, dtype=DTYPE), axis=0, dtype=DTYPE)
 
 
-#Shared Definitions
-def getData(filepath):
-    if filepath.endswith('.fits'):
-        hdulist = fits.open(filepath) #Opens HDU list
-        gassslice = hdulist[0].data #Reads all data as an array
-    else:
-        gassslice = imread(filepath, True)[::-1] #Makes B/W array, reversing y-coords
-    x, y = gassslice.shape #Gets dimensions
-    return gassslice, x, y
+for wlen in WLEN:
+    if not (0 < wlen < 550 and wlen%2):
+        time_a.append(0)
+        time_b.append(0)
+        continue
 
-def circ_kern(inkernel, radius):
-    #Performs a circle-cut of given radius on inkernel.
-    #Outkernel is 0 anywhere outside the window.    
-    #These are all the possible (m,n) indices in the image space, centered on center pixel
-    mnvals = np.indices((len(inkernel), len(inkernel)))
-    kcntr = np.floor(len(inkernel)/2.0)
-    mvals = mnvals[:,:][0] - kcntr
-    nvals = mnvals[:,:][1] - kcntr
+    print 'Working.. wlen=', wlen
+    ntheta = rht.ntheta_w(wlen)
+    fake_xyt = np.less(np.random.rand(wlen, wlen, ntheta), 0.5)
+    fake_data = np.less(np.random.rand(wlen, wlen), 0.5)
+    SETUP = "from __main__ import func_a, func_b, fake_data, fake_xyt"
 
-    rads = np.sqrt(nvals**2 + mvals**2)
-    outkernel = copy.copy(inkernel)
-    outkernel[rads > radius/2] = 0
-    
-    return outkernel
+    #B for Boolean
+    #start = time.time()
+    #output_b = func_b(fake_data, fake_xyt)
+    #time_b.append(time.time()-start)
+    time_b.append(timeit.timeit('func_b(fake_data, fake_xyt)', setup=SETUP, number=N)/N)
 
-def setParams(gassslice, w, s, f):
-    wlen = w #101.0 #Window diameter
-    frac = f #0.70 #Theta-power threshold to store
-    smr = s #11.0 #Smoothing radius
+    #A for Einstein
+    fake_xyt = fake_xyt.astype(DTYPE) #______________
+    fake_data = fake_data.astype(DTYPE) #_________________
+    #start = time.time()
+    #output_a = func_a(fake_data, fake_xyt)
+    #time_a.append(time.time()-start)
+    time_a.append(timeit.timeit('func_a(fake_data, fake_xyt)', setup=SETUP, number=N)/N)
 
-    ulen = np.ceil(wlen + smr/2) #Must be odd
-    if np.mod(ulen, 2) == 0:
-        ulen += 1
-    ucntr = np.floor(ulen/2)
+    #Check for equivalence
 
-    wcntr = np.floor(wlen/2)
-    ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))  
-
-    theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)
-    
-    wsquare1 = np.ones((wlen, wlen), np.int_)
-    kernel = circ_kern(wsquare1, smr) 
-    wkernel = circ_kern(wsquare1, wlen) 
-    
-    mask = None #Default is no mask
-
-    return wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask
-
-if __name__ == '__main__':
-
-    #Setup Statements
-    N=3
-    SETUP = 'from speedtest import getData, setParams; gassslice, datax, datay = getData(\'smalltest.fits\'); wlen, frac, smr, ucntr, wcntr, ntheta, dtheta, theta, mask = setParams(gassslice, 55, 5, 0.70)'
-
-    #Timing Loop
-    newstmt = 'fastrht_prof.window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)'
-    newsetup = 'import fastrht_prof; '+SETUP
-    newtime = timeit.timeit(stmt=newstmt, setup=newsetup, number=N)/N
-    print 'NEW:', newtime
-
-    oldstmt = 'fastrhtOLD_prof.window_step(gassslice, wlen, frac, smr, ucntr, wcntr, theta, ntheta, mask)' 
-    oldsetup = 'import fastrhtOLD_prof; '+SETUP
-    oldtime = timeit.timeit(stmt=oldstmt, setup=oldsetup, number=N)/N
-    print 'OLD:', oldtime
-    
-    print 'SPEEDUP:' + str(100*(1.0-newtime/oldtime)) + '%'
-    print 'Done.'
-
-
-'''
-Result History:
-6/16/14: old=112.19, new=111.97
-
-'''
-
+plot(WLEN, np.divide(time_a, np.power(WLEN, 3)), 'ro', WLEN, np.divide(time_b, np.power(WLEN, 3)), 'bo')
+show()
 
