@@ -7,7 +7,6 @@
 #-----------------------------------------------------------------------------------------
 from __future__ import division #Must be first line of code in the file
 from astropy.io import fits
-
 import scipy.ndimage
 import math
 import os
@@ -30,11 +29,14 @@ WLEN = 55 #101.0 #Diameter of a 'window' to be evaluated at one time
 FRAC = 0.70 #0.70 #fraction (percent) of one angle that must be 'lit up' to be counted
 SMR = 15 #smoothing radius of unsharp mask function
 
-ORIGINAL = False#True #Compute exactly the RHT looking along diameters #False causes it to be single-sided
+ORIGINAL = False #True #Compute exactly the RHT looking along diameters #False causes it to be single-sided
 
 #-----------------------------------------------------------------------------------------
 #Initialization 2 of 3: Runtime Variable
 #-----------------------------------------------------------------------------------------
+
+#Optional Local Files
+README = 'README' #Name of Readme file included with this software
 
 #Output Formatting
 OUTPUT = '.' #Directory for RHT output
@@ -484,7 +486,7 @@ def umask(data, radius, smr_mask=None):
     
     #Convert to binary data
     bindata = np.greater(subtr_data, 0.0)
-    if smr_mask == None:
+    if smr_mask is None:
         return bindata
     else:
         return np.logical_and(smr_mask, bindata) #np.where(smr_mask, bindata, smr_mask)
@@ -1121,7 +1123,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     return True
 
 
-def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
+def main(source=None, display=False, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     source: A filename, or the name of a directory containing files to transform
     display: Boolean flag determining if the input is to be interpreted and displayed
@@ -1198,7 +1200,7 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
 #-----------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    help = '''Rolling Hough Transform Utility
+    help = '''Rolling Hough Transform Command Line Utility
 
 Command Line Argument Format:
  >>>python rht.py arg1 arg2 ... argn 
@@ -1208,24 +1210,21 @@ NO ARGS:
  >>>python rht.py
 
 SINGLE ARGS:
- pathname ==> Input file or directory to run the RHT on
+ pathname ==> Input file or directory to run the Default RHT on
  >>>python rht.py dirname/filename.fits
   
- -h ==> Displays this message
- >>>python rht.py help
+ 'help', '-help', 'h', '-h' ==> Displays this message
+ >>>python rht.py -h
 
- -p ==> Displays Default Params
- >>>python rht.py -p
+ 'params', 'param', 'p', '-p', '-params', '-param' ==> Displays Default Params
+ >>>python rht.py param
  
 MULTIPLE ARGS:
- Creates 'dirname/filename_xyt.npz' for each input data
- 1st ==> Path to input file or directory
- 2nd:nth ==> Named inputs controlling params and flags
-
+ 1st ==> Input file or directory to run the RHT on
+ 2nd:nth ==> Named inputs controlling parameters and flags
   Flags: 
   -d  #Ouput is to be Displayed
-  -f  #Exisitng _xyt.fits is to be Forcefully overwritten
-
+  -f  #Any exisitng _xyt.fits is to be Forcefully overwritten
   Params:
   -wlen=value  #Sets window diameter
   -smr=value  #Sets smoothing radius
@@ -1233,7 +1232,6 @@ MULTIPLE ARGS:
     
     if len(sys.argv) == 1:
         #Displays the README file   
-        README = 'README'
         try:
             readme = open(README, 'r')
             print readme.read(2000) #TODO
