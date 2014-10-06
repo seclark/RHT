@@ -50,7 +50,7 @@ BUFFER = True #Gives the program permission to create a temporary directory for 
 DTYPE = np.float32 #Single precision
 FILECAP = int(5e8) #Maximum number of BYTES allowed for a SINGLE buffer file. THERE CAN BE MULTIPLE BUFFER FILES!
 
-#Excluded Data Types _______#TODO
+#Excluded Data Types 
 BAD_0 = True
 BAD_INF = True
 BAD_Neg = False 
@@ -146,7 +146,7 @@ def xyt_name_factory(filepath, wlen, smr, frac, original=ORIGINAL):
 
     filename = filename_from_path(filepath) #Removes RHT-specific endings
     dirname = os.path.dirname(os.path.abspath(filepath))
-    fnmatch_string = filename + xyt_suffix + '?'*DIGITS + xyt_format #TODO____________________ADAPT TO AND CLEAN UP DIFFERENT DIGITS
+    fnmatch_string = filename + xyt_suffix + '?'*DIGITS + xyt_format 
     xyt_files = fnmatch.filter(os.listdir(dirname), fnmatch_string) 
     xyt_array = [None]*(10**DIGITS) 
 
@@ -154,8 +154,7 @@ def xyt_name_factory(filepath, wlen, smr, frac, original=ORIGINAL):
     left = string.find(fnmatch_string, '?')
     for x in xyt_files:
         abs_x = os.path.join(dirname, x)
-        if getXYT(abs_x, match_only={'WLEN':wlen, 'SMR':smr, 'FRAC':frac, 'ORIGINAL':original} ): #TODO _______________________________________________________________________________________________________________________________
-            #print 'Found _xyt file matching your input parameters!'
+        if getXYT(abs_x, match_only={'WLEN':wlen, 'SMR':smr, 'FRAC':frac, 'ORIGINAL':original} ): 
             return os.path.normpath(abs_x)
         else:
             xyt_array[int( x[left:(left+DIGITS)] )] = x
@@ -191,11 +190,11 @@ def is_valid_file(filepath):
 
     return: Boolean, True ONLY when the data could have rht() applied successfully
     '''
-    excluded_file_endings = ['_xyt.fits', '_backproj.npy', '_spectrum.npy', '_plot.png', '_result.png'] #TODO___More Endings
+    excluded_file_endings = ['_xyt.fits', '_backproj.npy', '_spectrum.npy', '_plot.png', '_result.png'] 
     if any([filepath.endswith(e) for e in excluded_file_endings]):
         return False
     
-    excluded_file_content = ['_xyt', '_backproj', '_spectrum', '_plot', '_result'] #TODO___More Exclusions
+    excluded_file_content = ['_xyt', '_backproj', '_spectrum', '_plot', '_result'] 
     if any([e in filepath for e in excluded_file_content]):
         return False
 
@@ -205,7 +204,7 @@ def ntheta_w(w=WLEN):
     #Returns the number of theta bins in each Hthet array
 
     #Linearly proportional to wlen
-    return int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  #TODO_________________________________ntheta
+    return int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  
 
 def center(filepath, shape=(512, 512)):
     #Returns a cutout from the center of the data
@@ -227,7 +226,7 @@ def center(filepath, shape=(512, 512)):
     else:
         return center(filepath, shape=(x//2,y//2))
 
-def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compressed=True): #TODO _______________________________________PARAMETERS
+def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compressed=True):
     #Checks for existing _xyt arrays 
     #filename = filename_from_path(filepath)
     #existing_xyts = fnmatch.filter(os.listdir(os.path.dirname(os.path.realpath(xyt_filename))), filename+'_xyt??.*')
@@ -236,7 +235,7 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compres
     if xyt_filename.endswith('.npz'):
         #IMPLEMENTATION1: Zipped Numpy arrays of Data
         if compressed:
-            save = np.savez_compressed  #TODO _______________________________________HEADER VARS
+            save = np.savez_compressed  
         else:
             save = np.savez
         if backproj is None:
@@ -256,7 +255,7 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compres
 
         #Header Values for RHT Parameters
         prihdr = fits.Header()
-        prihdr['WLEN'] = wlen #TODO _______________________________________HEADER VARS
+        prihdr['WLEN'] = wlen 
         prihdr['SMR'] = smr
         prihdr['FRAC'] = frac
         prihdr['ORIGINAL'] = ORIGINAL
@@ -320,7 +319,7 @@ def getXYT(xyt_filename, match_only=False, rebuild=False, filepath=None):
             xyt = np.memmap(tempfile.TemporaryFile(), dtype=DTYPE, mode='w+', shape=(datay, datax, ntheta))
             xyt.fill(0.0)
         else:
-            print 'Warning: Reconstructing very large array in memory! Set BUFFER to True!' #TODO [y]/n____________________-_
+            print 'Warning: Reconstructing very large array in memory! Set BUFFER to True!' 
             xyt = np.zeros((datay, datax, ntheta))
         coords = zip(Hj, Hi)
         for c in range(len(coords)):
@@ -405,7 +404,7 @@ def all_within_diameter_are_good(data, diameter):
         x = (x_arr + i).astype(np.int).clip(0, datax-1)
         y = (y_arr + j).astype(np.int).clip(0, datay-1)
         mask[y, x] = 0 
-        update_progress((c+1)/float(N), message='Masking:', final_message='Finished Masking:') #TODO_______________________________________________________________Progress Bar
+        update_progress((c+1)/float(N), message='Masking:', final_message='Finished Masking:') 
     '''
     #IMPLEMENTATION2: For each good pixel, 'Not Any Bad pixels near me'
     coords = zip(*np.nonzero(mask))
@@ -431,7 +430,7 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
             data = hdu.data #Reads all data as an array
 
         elif filepath.endswith('.npy'):
-            data = np.load(filepath, mmap_mode='r') #Reads numpy files #TODO
+            data = np.load(filepath, mmap_mode='r') #Reads numpy files 
         
         else:
             data = scipy.ndimage.imread(filepath, flatten=True)[::-1] #Makes B/W array, reversing y-coords         
@@ -489,7 +488,7 @@ def umask(data, radius, smr_mask=None):
     else:
         return np.logical_and(smr_mask, bindata) #np.where(smr_mask, bindata, smr_mask)
 
-def fast_hough(in_arr, xyt): #, hout=None): #TODO_________________________________________#THIS IS ONE BOTTLENECK IN THE CODE
+def fast_hough(in_arr, xyt): #, hout=None): 
 
     assert in_arr.ndim == 2 
     assert xyt.ndim == 3
@@ -501,7 +500,7 @@ def fast_hough(in_arr, xyt): #, hout=None): #TODO_______________________________
     
     '''
     if hout == None:
-        return np.einsum('ijk,ij', xyt, in_arr) #, dtype=np.int) #TODO_____________________________EINSTEIN SUMMATION
+        return np.einsum('ijk,ij', xyt, in_arr) #, dtype=np.int) 
     else:
         assert hout.ndim == 1
         assert hout.shape[0] == xyt.shape[2]
@@ -581,7 +580,7 @@ def houghnew(image, cos_theta, sin_theta):
         indices = shifted.astype(np.int)
         
         # use bin count to accumulate the coefficients
-        bincount = np.bincount(indices) #TODO______________________ bincount method?
+        bincount = np.bincount(indices) 
 
         # finally assign the proper values to the out array
         out[:len(bincount), i] = bincount
@@ -616,7 +615,7 @@ def all_thetas(wlen, thetbins):
         out[j, i, :] = houghnew(w_1, cos_theta, sin_theta)
 
     if not ORIGINAL:
-        out[:,:,ntheta//2:] = out[::-1,::-1,ntheta//2:] #TODO _______________________________________________ CYLINDER
+        out[:,:,ntheta//2:] = out[::-1,::-1,ntheta//2:] 
         out[:wlen//2+1,:,ntheta//2] = 0
         out[wlen//2:,:,0] = 0
 
@@ -674,7 +673,7 @@ def concat_along_axis_0(memmap_list):
     #Combines memmap objects of the same shape, except along axis 0,
     #BY LEAVING THEM ALL ON DISK AN APPENDING THEM SEQUENTIALLY
     if len(memmap_list) == 0:
-        raise ValueError('Failed to buffer any data!') #TODO_______________________________Unhandled Exception
+        raise ValueError('Failed to buffer any data!') 
 
     elif len(memmap_list) == 1:
         return memmap_list[0]
@@ -686,7 +685,7 @@ def concat_along_axis_0(memmap_list):
         shapes = [memmap.shape[1:] for memmap in memmap_list]
         assert all([x==shapes[0] for x in shapes[1:]])
 
-        big_memmap = np.memmap(os.path.join(temp_dir, +'rht.dat'), dtype=DTYPE, mode='r+', shape=(sum(lengths), *shapes[0])  )   #TODO ______________________________________________________
+        big_memmap = np.memmap(os.path.join(temp_dir, +'rht.dat'), dtype=DTYPE, mode='r+', shape=(sum(lengths), *shapes[0])  )   
         lengths.insert(0, sum(lengths))
         for i in range(len(memmap_list)):
             temp_file = memmap_list[i]
@@ -892,7 +891,7 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         print '2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)
         
         message = '3/4:: Running RHT...'
-        success = window_step(data, wlen, frac, smr, smr_mask, wlen_mask, xyt_filename, message) #TODO__________________
+        success = window_step(data, wlen, frac, smr, smr_mask, wlen_mask, xyt_filename, message) 
         
 
         print '4/4:: Successfully Saved Data As', xyt_filename
@@ -980,7 +979,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     #Makes sure relevant files are present!____________________
     filename = filename_from_path(filepath)
-    xyt_filename = filename + '_xyt.fits'  #___________________________________________________TODO, Keep all interpreting in Interpret
+    xyt_filename = filename + '_xyt.fits'  
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
     required_files = [backproj_filename, spectrum_filename, xyt_filename]
@@ -1008,7 +1007,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     #Produce Specific Plots
     masked_udata = umask(data, smr)
-    log = np.log(np.where( np.isfinite(data), data, np.ones_like( data) )) #TODO Warnings?
+    log = np.log(np.where( np.isfinite(data), data, np.ones_like( data) ))
     U = np.zeros_like(hi)
     V = np.zeros_like(hj)
     C = np.zeros((len(U)), dtype=np.float)
@@ -1083,7 +1082,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     print 'Theta Spectrum'
 
     plt.plot(np.linspace(0.0, 2*180.0, num=ntheta, endpoint=False), spectrum) #___________---2*
-    #___________________________________TODO SAVE PLOT
+    
     plt.show()
     cleanup()
     
@@ -1150,7 +1149,6 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
 
     #Run RHT Over All Valid Inputs 
     announce(['Fast Rolling Hough Transform by Susan Clark', 'Started for: '+source])
-    #TODO batch progress bar
 
     summary = []
     for path in pathlist:
@@ -1177,7 +1175,7 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR)
 #Initialization 3 of 3: Precomputed Objects
 #-----------------------------------------------------------------------------------------
 
-#TODO
+
         
 #-----------------------------------------------------------------------------------------
 #Command Line Mode
@@ -1222,7 +1220,7 @@ MULTIPLE ARGS:
         README = 'README'
         try:
             readme = open(README, 'r')
-            print readme.read(2000) #TODO
+            print readme.read(2000) 
             if len(readme.read(1)) == 1:
                 print ''
                 print '...see', README, 'for more information...'
@@ -1270,7 +1268,7 @@ MULTIPLE ARGS:
             else:
                 #PARAMETERS which DO carry values
                 argname = arg.lower().split('=')[0]
-                argval = arg.lower().split('=')[1] #TODO Handle errors
+                argval = arg.lower().split('=')[1] 
                 if argname in ['w', 'wlen', '-w', '-wlen']:
                     wlen = float(argval)
                 elif argname in ['s', 'smr', '-s', '-smr']:
