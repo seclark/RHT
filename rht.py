@@ -136,7 +136,7 @@ def filename_from_path(filepath):
     #Maintains all characters in path except for those after and including the last period
     return os.path.basename('.'.join( filepath.split('.')[ 0:filepath.count('.') ] ) ) 
 
-def xyt_name_factory(filepath, wlen, smr, frac, double=ORIGINAL):
+def xyt_name_factory(filepath, wlen, smr, frac, original=ORIGINAL):
     #Returns the filename that _xyt output should have.
     #Will have the general behavior: filename_xyt00.format
 
@@ -154,7 +154,7 @@ def xyt_name_factory(filepath, wlen, smr, frac, double=ORIGINAL):
     left = string.find(fnmatch_string, '?')
     for x in xyt_files:
         abs_x = os.path.join(dirname, x)
-        if getXYT(abs_x, match_only={'WLEN':wlen, 'SMR':smr, 'FRAC':frac, 'DOUBLE':double} ): #TODO _______________________________________________________________________________________________________________________________
+        if getXYT(abs_x, match_only={'WLEN':wlen, 'SMR':smr, 'FRAC':frac, 'ORIGINAL':original} ): #TODO _______________________________________________________________________________________________________________________________
             #print 'Found _xyt file matching your input parameters!'
             return os.path.normpath(abs_x)
         else:
@@ -240,9 +240,9 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compres
         else:
             save = np.savez
         if backproj is None:
-            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=ORIGINAL, ntheta=hthets.shape[1])
+            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, original=ORIGINAL, ntheta=hthets.shape[1])
         else:
-            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=ORIGINAL, ntheta=hthets.shape[1], backproj=backproj)
+            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, original=ORIGINAL, ntheta=hthets.shape[1], backproj=backproj)
 
 
     elif xyt_filename.endswith('.fits'):
@@ -259,7 +259,7 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compres
         prihdr['WLEN'] = wlen #TODO _______________________________________HEADER VARS
         prihdr['SMR'] = smr
         prihdr['FRAC'] = frac
-        prihdr['DOUBLE'] = ORIGINAL
+        prihdr['ORIGINAL'] = ORIGINAL
 
         #Other Header Values
         prihdr['NTHETA'] = ntheta
@@ -880,7 +880,7 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         return False
 
     try:
-        xyt_filename = xyt_name_factory(filepath, wlen, smr, frac, double=ORIGINAL)
+        xyt_filename = xyt_name_factory(filepath, wlen, smr, frac, original=ORIGINAL)
         
         if not force and os.path.isfile(xyt_filename):
             return True
@@ -944,7 +944,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         specturm = 
     else:
     '''
-    spectrum = np.sum(hthets, axis=0) #TODO___________________________Single/Double-Sided
+    spectrum = np.sum(hthets, axis=0)
     spectrum_filename = filename + '_spectrum.npy'
     np.save(spectrum_filename, np.array(spectrum))
 
