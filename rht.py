@@ -1106,7 +1106,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     return True
 
 
-def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
+def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORIGINAL):
     '''
     source: A filename, or the name of a directory containing files to transform
     display: Boolean flag determining if the input is to be interpreted and displayed
