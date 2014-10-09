@@ -1255,6 +1255,7 @@ MULTIPLE ARGS:
         wlen = WLEN
         frac = FRAC
         smr = SMR
+        original = ORIGINAL
 
         for arg in args:
             if '=' not in arg:
@@ -1275,10 +1276,12 @@ MULTIPLE ARGS:
                     smr = float(argval)
                 elif argname in ['f', 'frac', '-f', '-frac']:
                     frac = float(argval)
+                elif argname in ['o', 'original', '-o', '-original', 'orig', '-orig']:
+                    original = argval
                 else:
                     print 'UNKNOWN PARAMETER:', arg
 
-        main(source=SOURCE, display=DISPLAY, force=FORCE, wlen=wlen, frac=frac, smr=smr)
+        main(source=SOURCE, display=DISPLAY, force=FORCE, wlen=wlen, frac=frac, smr=smr, original=original)
 
     exit()
 
