@@ -848,7 +848,7 @@ def window_step(data, wlen, frac, smr, smr_mask, wlen_mask, xyt_filename, messag
 #Interactive Functions
 #-----------------------------------------------------------------------------------------
 
-def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
+def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORIGINAL):
     '''
     filepath: String path to source data, which will have the Rolling Hough Transform applied
     force: Boolean indicating if rht() should still be run, even when output exists for these inputs
@@ -902,7 +902,7 @@ def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
         return False
 
 
-def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
+def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORIGINAL):
     '''
     filepath: String path to source data, used in forcing and backprojection
     force: Boolean indicating if rht() should be run, even when required_files are found
@@ -931,7 +931,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
             except:
                 #Assume it's not there
                 continue 
-        rht(filepath, force=force, wlen=wlen, frac=frac, smr=smr) 
+        rht(filepath, force=force, wlen=wlen, frac=frac, smr=smr, original=ORIGINAL) 
 
     #Proceed with iterpreting the rht output files
     hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
@@ -962,7 +962,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     return True
 
     
-def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
+def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORIGINAL):
     '''
     filepath: String path to source data, used in forcing and backprojection
     force: Boolean indicating if interpret() should be run, even when required_files are found
@@ -993,7 +993,7 @@ def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
             except:
                 #Assume it's not there
                 continue 
-        interpret(filepath, force=force, wlen=wlen, frac=frac, smr=smr) 
+        interpret(filepath, force=force, wlen=wlen, frac=frac, smr=smr, original=ORIGINAL) 
 
     #Loads in relevant files and data
     data = getData(filepath) #data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
@@ -1155,9 +1155,9 @@ def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR,
         success = True
         try:
             if (display):
-                success = viewer(path, force=force, wlen=wlen, frac=frac, smr=smr)
+                success = viewer(path, force=force, wlen=wlen, frac=frac, smr=smr, original=ORIGINAL)
             else:
-                success = rht(path, force=force, wlen=wlen, frac=frac, smr=smr)
+                success = rht(path, force=force, wlen=wlen, frac=frac, smr=smr, original=ORIGINAL)
         except:
             success = False
             raise #____________________________________________________________________________________________________________________HANG??
