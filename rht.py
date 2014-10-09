@@ -226,7 +226,7 @@ def center(filepath, shape=(512, 512)):
     else:
         return center(filepath, shape=(x//2,y//2))
 
-def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compressed=True):
+def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, original, backproj=None, compressed=True):
     #Checks for existing _xyt arrays 
     #filename = filename_from_path(filepath)
     #existing_xyts = fnmatch.filter(os.listdir(os.path.dirname(os.path.realpath(xyt_filename))), filename+'_xyt??.*')
@@ -239,9 +239,9 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compres
         else:
             save = np.savez
         if backproj is None:
-            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, original=ORIGINAL, ntheta=hthets.shape[1])
+            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, original=original, ntheta=hthets.shape[1])
         else:
-            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, original=ORIGINAL, ntheta=hthets.shape[1], backproj=backproj)
+            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, original=original, ntheta=hthets.shape[1], backproj=backproj)
 
 
     elif xyt_filename.endswith('.fits'):
