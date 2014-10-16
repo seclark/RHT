@@ -255,7 +255,7 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, original, backproj=Non
         prihdr['WLEN'] = wlen 
         prihdr['SMR'] = smr
         prihdr['FRAC'] = frac
-        prihdr['ORIGINAL'] = ORIGINAL
+        prihdr['ORIGINAL'] = original
 
         #Other Header Values
         prihdr['NTHETA'] = ntheta
@@ -594,7 +594,7 @@ def all_thetas(wlen, theta, original):
         w_1[j,i] = 1
         out[j, i, :] = houghnew(w_1, cos_theta, sin_theta)
 
-    if not ORIGINAL:
+    if not original:
         out[:,:,ntheta//2:] = out[::-1,::-1,ntheta//2:] 
         out[:wlen//2+1,:,ntheta//2] = 0
         out[wlen//2:,:,0] = 0
@@ -935,7 +935,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     for c in range(len(coords)):
         C[c], U[c], V[c] = theta_rht(hthets[c], original, uv=True)
     C *= np.isfinite(C)
-    if ORIGINAL:
+    if original:
         C /= np.pi
     else:
         C /= 2*np.pi 
@@ -1011,7 +1011,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     #Polar plot of theta power
     print 'Linearity'
     
-    if ORIGINAL:
+    if original:
         modified_spectrum = np.true_divide(np.append(spectrum, spectrum), 2.0) 
         plt.polar(np.linspace(0.0, 2*np.pi, num=2*ntheta, endpoint=False), modified_spectrum)
     else:
@@ -1188,10 +1188,10 @@ MULTIPLE ARGS:
                     DISPLAY = True
                 elif arg.lower() in ['f', '-f', 'force', '-force']:
                     FORCE = True
-                elif arg.lower() in ['n', 'new', '-n', '-new']:
+                elif arg.lower() in ['dRHT', 'directional', 'direc', 'direct', '-dRHT', '-ndirectional', '-direc', '-direct']:
                     original = False
-                elif arg.lower() in ['o', 'original', 'orig', '-o', '-original', '-orig']:
-                    original = True
+                #elif arg.lower() in ['o', 'original', 'orig', '-o', '-original', '-orig']:
+                #    original = True
                 else:
                     print 'UNKNOWN FLAG:', arg
             else:
@@ -1206,8 +1206,9 @@ MULTIPLE ARGS:
                     smr = float(argval)
                 elif argname in ['f', 'frac', '-f', '-frac']:
                     frac = float(argval)
-                elif argname in ['o', 'original', 'orig', '-o', '-original', '-orig']:
-                    original = bool(argval)
+                #elif argname in ['o', 'original', 'orig', '-o', '-original', '-orig']:
+                #    original = bool(argval)
+                #    print 'the original value is', original
                 else:
                     print 'UNKNOWN PARAMETER:', arg
 
