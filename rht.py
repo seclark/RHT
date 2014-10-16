@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 #FAST ROLLING HOUGH TRANSFORM
 #Susan Clark, Lowell Schudel
 
@@ -7,6 +7,9 @@
 #-----------------------------------------------------------------------------------------
 from __future__ import division #Must be first line of code in the file
 from astropy.io import fits
+from argparse import ArgumentParser
+from argparse import ArgumentDefaultsHelpFormatter
+
 import scipy.ndimage
 import math
 import os
@@ -915,7 +918,7 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR)
         data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
         datay, datax = data.shape
 
-        print '2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)+',', 'Original:', str(original)
+        print '2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)+',', 'dRHT:', str(original)
         
         message = '3/4:: Running RHT...'
 
@@ -1169,116 +1172,36 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
 #-----------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    help = '''Rolling Hough Transform Command Line Utility
+    parser = ArgumentParser(description="Run Rolling Hough Transform on 1+ FITS files",
+        usage='%(prog)s [options] file(s)',
+        formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('files',nargs='+',help="FITS file(s)")
+    parser.add_argument('-d','--display',help="Display output",
+        action='store_true')
+    parser.add_argument('-f','--force', action="store_true",
+        help="force overwriting of existing output _xyt.fits files")
+    parser.add_argument('-w','--wlen',default=WLEN,type=int,
+        help="Window diameter in pixels")
+    parser.add_argument('-s','--smr',default=SMR,type=int,
+        help="Smoothing radius for unsharp mask in pixels")
+    parser.add_argument('-t','--thresh',default=FRAC,type=float,
+        help="Fraction (Threshold) of a given theta that must be 'lit up' to be counted")
+    parser.add_argument('-p','--polar',action="store_true",
+        help="Compute full polar RHT (directional)")
+    parser.add_argument('--version',action='version',version='%(prog)s 1.0')
 
-Command Line Argument Format:
- >>>python rht.py arg1 arg2 ... argn 
+    if len(sys.argv) == 1: # no arguments given, so add -h to get help msg
+        sys.argv.append('-h')
+    args = parser.parse_args()
 
-NO ARGS:
- Displays README and exits
- >>>python rht.py
-
-SINGLE ARGS:
- pathname ==> Input file or directory to run the Default RHT on
- >>>python rht.py dirname/filename.fits
-  
- 'help', '-help', 'h', '-h' ==> Displays this message
- >>>python rht.py -h
-
- 'params', 'param', 'p', '-p', '-params', '-param' ==> Displays Default Params
- >>>python rht.py param
- 
-MULTIPLE ARGS:
- 1st ==> Input file or directory to run the RHT on
- 2nd:nth ==> Named inputs controlling parameters and flags
-  Flags: 
-  'd', '-d', 'display', '-display'  ==> Ouput is to be Displayed
-  'f', '-f', 'force', '-force'      ==> Exisitng output is to be Forcefully overwritten
-  'o', 'orig', '-o', '-orig'        ==> The DOUBLE SIDED RHT is to be used
-  'drht', 'directional', 'direc', '-drht', '-directional', '-direc',  ==> The DIRECTIONAL RHT is to be used
-  Params:
-  'w', 'wlen', '-w', '-wlen' =value ==> Sets window diameter
-  's', 'smr', '-s', '-smr'   =value ==> Sets smoothing radius
-  'f', 'frac', '-f', '-frac' =value ==> Sets theta power threshold
-  '''
-    
-    if len(sys.argv) == 1:
-        # Displays the README file   
-        try:
-            readme = open(README, 'r')
-            print readme.read(2000) 
-            if len(readme.read(1)) == 1:
-                print ''
-                print '...see', README, 'for more information...'
-                print ''
-            readme.close()
-        except:
-            announce(help)
-
-    elif len(sys.argv) == 2:
-        # Parses input for single argument flags
-        SOURCE = sys.argv[1]
-        if SOURCE.lower() in ['help', '-help', 'h', '-h']:
-            announce(help)
-        elif SOURCE.lower() in ['params', 'param', 'p', '-p', '-params', '-param']:
-            params = ['Default RHT Parameters:']
-            params.append('wlen = '+str(WLEN))
-            params.append('smr = '+str(SMR))
-            params.append('frac = '+str(FRAC))
-            params.append('standard rht = '+str(ORIGINAL))
-            announce(params)
-        else:
-            main(source=SOURCE)
-
+    if args.polar is False:
+        ORIGINAL = True
     else:
-        SOURCE = sys.argv[1]
-        args = sys.argv[2:]
-        
-        # Default flag values
-        DISPLAY = False
-        FORCE = False
-        
-        # Default param values
-        wlen = WLEN
-        frac = FRAC
-        smr = SMR
-        original = ORIGINAL
+        ORIGINAL = False
 
-        for arg in args:
-            if not ('=' in arg):
-                # FLAGS which do not carry values 
-                if arg.lower() in ['d', '-d', 'display', '-display']:
-                    DISPLAY = True
-                elif arg.lower() in ['f', '-f', 'force', '-force']:
-                    FORCE = True
-                elif arg.lower() in ['drht', 'directional', 'direc', 'direct', '-drht', '-directional', '-direc', '-direct']:
-                    drht = True
-                    original = False
-                #elif arg.lower() in ['o', 'original', 'orig', '-o', '-original', '-orig']:
-                #    original = True
-                else:
-                    print 'UNKNOWN FLAG:', arg
-            else:
-                # PARAMETERS which do carry values
-                argname = arg.lower().split('=')[0]
-
-                argval = arg.lower().split('=')[1] #TODO____________________________Allow for inputting value ranges
-
-                if argname in ['w', 'wlen', '-w', '-wlen']:
-                    wlen = float(argval)
-                elif argname in ['s', 'smr', '-s', '-smr']:
-                    smr = float(argval)
-                elif argname in ['f', 'frac', '-f', '-frac']:
-                    frac = float(argval)
-                #elif argname in ['o', 'original', 'orig', '-o', '-original', '-orig']:
-                #    original = bool(argval)
-                #    print 'the original value is', original
-                else:
-                    print 'UNKNOWN PARAMETER:', arg
-
-        main(source=SOURCE, display=DISPLAY, force=FORCE, drht=drht, wlen=wlen, frac=frac, smr=smr)
-
-
+    for f in args.files: # loop over input files
+        main(source=f, display=args.display, force=args.force, wlen=args.wlen,
+            frac=args.thresh, smr=args.smr, drht=ORIGINAL)
     exit()
 
 #-----------------------------------------------------------------------------------------
