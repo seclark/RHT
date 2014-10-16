@@ -44,13 +44,13 @@ Instructions For Use (Python)
 
 4. Explanation of rht.main() Flags and Parameters
    Flags: 
-     force=True  # Forcefully overwrite existing RHT data with same parameter values.
-     drht=True   # Run the directional RHT, which returns output on a full, rather than half, polar domain.
+     force=False  # If True, forcefully overwrites existing RHT data with same parameter values.
+     drht=False   # If True, runs the directional RHT, which returns output on a full, rather than half, polar domain.
      
    Params:
-     wlen=value  # Set window diameter
-     smr=value   # Set smoothing radius
-     frac=value  # Set theta power threshold
+     wlen=55.0  # Set window diameter in pixels.
+     smr=11.0   # Set smoothing radius in pixels. 
+     frac=0.70  # Set theta power threshold. 
 
 5. Displaying the results of previously Interpreted RHT data (#TODO_Deprecated)
 
