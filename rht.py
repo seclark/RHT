@@ -1078,7 +1078,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
 
 
 
-def main(source=None, display=False, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR):
+def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     '''
     source: A filename, or the name of a directory containing files to transform
