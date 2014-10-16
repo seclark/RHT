@@ -743,11 +743,15 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
     # Needed values
     r = wlen//2 
     ntheta = ntheta_w(wlen)
+    
+    # For the dRHT, we maintain dtheta by doubling ntheta.
+    if not original:
+        ntheta = ntheta*2
+    
     if original:
         theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
     else:
-        # For the dRHT, we maintain dtheta by doubling ntheta.
-        theta, dtheta = np.linspace(0.0, 2*np.pi, 2*ntheta, endpoint=False, retstep=True)
+        theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)
 
     # Cylinder of all lit pixels along a theta value
     xyt = all_thetas(wlen=wlen, theta=theta, original=original) 
@@ -1064,7 +1068,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     
     if original:
         modified_spectrum = np.true_divide(np.append(spectrum, spectrum), 2.0) 
-        plt.polar(np.linspace(0.0, 2*np.pi, num=2*ntheta, endpoint=False), modified_spectrum)
+        plt.polar(np.linspace(0.0, 2*np.pi, num=ntheta, endpoint=False), modified_spectrum)
     else:
         plt.polar(np.linspace(0.0, 2*np.pi, num=ntheta, endpoint=False), spectrum)
     plt.show()
