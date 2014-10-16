@@ -748,13 +748,10 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
     r = wlen//2 
     ntheta = ntheta_w(wlen)
     
-    # For the dRHT, we maintain dtheta by doubling ntheta.
-    #if not original:
-    #    ntheta = ntheta*2
-    
     if original:
         theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
     else:
+        # For the dRHT, we maintain ntheta by doubling dtheta.
         theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)
 
     # Cylinder of all lit pixels along a theta value
@@ -1209,4 +1206,5 @@ if __name__ == "__main__":
 #-----------------------------------------------------------------------------------------
 
 # This is the Rolling Hough Transform, described in Clark, Peek, & Putman 2014, ApJ 789, 82 (arXiv:1312.1338).
+# If use of the RHT leads to a publication, please cite the above.
 # Modifications to the RHT have been made by Lowell Schudel, les2185@columbia.edu, CC'16.
