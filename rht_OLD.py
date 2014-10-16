@@ -7,6 +7,7 @@
 #-----------------------------------------------------------------------------------------
 from __future__ import division #Must be first line of code in the file
 from astropy.io import fits
+
 import scipy.ndimage
 import math
 import os
@@ -19,6 +20,7 @@ import fnmatch
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 
 #-----------------------------------------------------------------------------------------
 #Initialization 1 of 3: Calculation Parameters
@@ -34,33 +36,26 @@ ORIGINAL = True #Compute exactly the RHT looking along diameters #False causes i
 #Initialization 2 of 3: Runtime Variable
 #-----------------------------------------------------------------------------------------
 
-#Optional Local Files
-README = 'README' #Name of Readme file included with this software
-
 #Output Formatting
 OUTPUT = '.' #Directory for RHT output
-xyt_format = '.fits' #'.npz' #Numpy arrays would be compressed, but fits are more standardized
+xyt_format = '.fits' #'.npz' #Numpy arrays will be compressed, but fits are more standardized
 xyt_suffix = '_xyt' #Arbitrary name indicating the output of the RHT accumulator array 
-DIGITS = 2 #Limits ouput to 10^DIGITS files per input (_xyt00.fits to _xyt99.fits)
+DIGITS = 2 #Limits ouput to 100 files (_xyt00.fits to _xyt99.fits)
 
 #User Interface
 TEXTWIDTH = 70 #Width of some displayed text objects
-PROGRESS = True #Whether to display a progress bar, at the cost of some speed
-DEBUG = True #Whether to display information that would be helpful to developers and advanced users
 
 #Allows processing of larger files than RAM alone would allow
 BUFFER = True #Gives the program permission to create a temporary directory for RHT data
 DTYPE = np.float32 #Single precision
 FILECAP = int(5e8) #Maximum number of BYTES allowed for a SINGLE buffer file. THERE CAN BE MULTIPLE BUFFER FILES!
 
-
-#Excluded Data Types
-
+#Excluded Data Types _______#TODO
 BAD_0 = True
 BAD_INF = True
 BAD_Neg = False 
 
-#Timers #______________Should be put into a timer object
+#Timers
 start_time = None
 stop_time = None
 
@@ -85,15 +80,10 @@ def announce(strings):
 def update_progress(progress, message='Progress:', final_message='Finished:'):
     #Create progress meter that looks like: 
     #message + ' ' + '[' + '#'*p + ' '*(length-p) + ']' + time_message
-    if not PROGRESS:
-        #Allows time-sensitive jobs to be completed without timing overhead
-        return 
 
     if not 0.0 <= progress <= 1.0:
-        #Fast fail for values outside the allowed range
         raise ValueError('Progress value outside allowed value in update_progress') 
 
-    #TODO_________________Slow Global Implementation
     global start_time
     global stop_time 
 
@@ -146,8 +136,7 @@ def filename_from_path(filepath):
     #Maintains all characters in path except for those after and including the last period
     return os.path.basename('.'.join( filepath.split('.')[ 0:filepath.count('.') ] ) ) 
 
-
-def xyt_name_factory(filepath, wlen, smr, frac, original):
+def xyt_name_factory(filepath, wlen, smr, frac, double=ORIGINAL):
     #Returns the filename that _xyt output should have.
     #Will have the general behavior: filename_xyt00.format
 
@@ -157,7 +146,7 @@ def xyt_name_factory(filepath, wlen, smr, frac, original):
 
     filename = filename_from_path(filepath) #Removes RHT-specific endings
     dirname = os.path.dirname(os.path.abspath(filepath))
-    fnmatch_string = filename + xyt_suffix + '?'*DIGITS + xyt_format 
+    fnmatch_string = filename + xyt_suffix + '?'*DIGITS + xyt_format #TODO____________________ADAPT TO AND CLEAN UP DIFFERENT DIGITS
     xyt_files = fnmatch.filter(os.listdir(dirname), fnmatch_string) 
     xyt_array = [None]*(10**DIGITS) 
 
@@ -165,10 +154,8 @@ def xyt_name_factory(filepath, wlen, smr, frac, original):
     left = string.find(fnmatch_string, '?')
     for x in xyt_files:
         abs_x = os.path.join(dirname, x)
-
-        if getXYT(abs_x, match_only={'WLEN':wlen, 'SMR':smr, 'FRAC':frac, 'ORIGINAL':original} ): #TODO _______________________________________________________________________________________________________________________________
+        if getXYT(abs_x, match_only={'WLEN':wlen, 'SMR':smr, 'FRAC':frac, 'DOUBLE':double} ): #TODO _______________________________________________________________________________________________________________________________
             #print 'Found _xyt file matching your input parameters!'
-
             return os.path.normpath(abs_x)
         else:
             xyt_array[int( x[left:(left+DIGITS)] )] = x
@@ -200,17 +187,15 @@ def xyt_name_factory(filepath, wlen, smr, frac, original):
 #-----------------------------------------------------------------------------------------
 def is_valid_file(filepath):
     '''
-    filepath: Potentially a string path to a source file for the RHT
+    filepath: Potentially a string path to a source data
 
-    return: Boolean, True ONLY when the data might have rht() applied successfully
+    return: Boolean, True ONLY when the data could have rht() applied successfully
     '''
-
-    excluded_file_endings = [] #TODO___More Endings
-
+    excluded_file_endings = ['_xyt.fits', '_backproj.npy', '_spectrum.npy', '_plot.png', '_result.png'] #TODO___More Endings
     if any([filepath.endswith(e) for e in excluded_file_endings]):
         return False
     
-    excluded_file_content = ['_xyt', '_backproj', '_spectrum', '_plot', '_result'] 
+    excluded_file_content = ['_xyt', '_backproj', '_spectrum', '_plot', '_result'] #TODO___More Exclusions
     if any([e in filepath for e in excluded_file_content]):
         return False
 
@@ -220,25 +205,44 @@ def ntheta_w(w=WLEN):
     #Returns the number of theta bins in each Hthet array
 
     #Linearly proportional to wlen
-    return int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  
+    return int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  #TODO_________________________________ntheta
 
+def center(filepath, shape=(512, 512)):
+    #Returns a cutout from the center of the data
+    x, y = int(shape[0]), int(shape[1])
+    if x < 64 or y < 64:
+        raise ValueError('Invalid shape in center(), or image too small')
+    data = getData(filepath)
+    datay, datax = data.shape 
+    if 0 < x < datax and 0 < y < datay:
+        left = int(datax//2-x//2)
+        right = int(datax//2+x//2)
+        up = int(datay//2+y//2)
+        down = int(datay//2-y//2)
+        cutout = np.array(data[down:up, left:right])
+        filename = filename_from_path(filepath)
+        center_filename = filename+'_center.npy'
+        np.save(center_filename, cutout)
+        return center_filename
+    else:
+        return center(filepath, shape=(x//2,y//2))
 
-def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, original, backproj=None, compressed=True):
-    #Saves the data into the given xyt_filename, depending upon filetype. Supports .fits and .npz currently
-
+def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, backproj=None, compressed=True): #TODO _______________________________________PARAMETERS
+    #Checks for existing _xyt arrays 
+    #filename = filename_from_path(filepath)
+    #existing_xyts = fnmatch.filter(os.listdir(os.path.dirname(os.path.realpath(xyt_filename))), filename+'_xyt??.*')
+    #print existing_xyts
 
     if xyt_filename.endswith('.npz'):
-        #IMPLEMENTATION1: Zipped Numpy arrays of Data #TODO _______________________________________ALWAYS BE CAREFUL WITH HEADER VARS
+        #IMPLEMENTATION1: Zipped Numpy arrays of Data
         if compressed:
-
-            save = np.savez_compressed  
+            save = np.savez_compressed  #TODO _______________________________________HEADER VARS
         else:
             save = np.savez
         if backproj is None:
-            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, original=original, ntheta=hthets.shape[1])
+            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=ORIGINAL, ntheta=hthets.shape[1])
         else:
-            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, original=original, ntheta=hthets.shape[1], backproj=backproj)
-
+            save(xyt_filename, hi=hi, hj=hj, hthets=hthets, wlen=wlen, smr=smr, frac=frac, double=ORIGINAL, ntheta=hthets.shape[1], backproj=backproj)
 
 
     elif xyt_filename.endswith('.fits'):
@@ -252,10 +256,10 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, original, backproj=Non
 
         #Header Values for RHT Parameters
         prihdr = fits.Header()
-        prihdr['WLEN'] = wlen 
+        prihdr['WLEN'] = wlen #TODO _______________________________________HEADER VARS
         prihdr['SMR'] = smr
         prihdr['FRAC'] = frac
-        prihdr['ORIGINAL'] = ORIGINAL
+        prihdr['DOUBLE'] = ORIGINAL
 
         #Other Header Values
         prihdr['NTHETA'] = ntheta
@@ -265,46 +269,39 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, original, backproj=Non
         thdulist = fits.HDUList([prihdu, tbhdu])
         thdulist.writeto(xyt_filename, output_verify='silentfix', clobber=True, checksum=True)
 
-        #TODO__________________Compress Fits Files After Saving
 
     else:
-        raise ValueError('Supported output filetypes in putXYT include: .npz and .fits only')
+        raise ValueError('Supported output types in putXYT include .npz and .fits only')
 
-def getXYT(xyt_filename, match_only=False):    
-    #Reads in a .npz or .fits file containing the output of the RHT.
-    #If match_only is given, and a dictionary of Keys:
-    # This will return whether ALL keys are found in the data of the given file 
-    #Else:
-    # This will return the image coordinates of significant linearity, and the theta power spectrum at those coords. 
-    # This will return as two integer arrays of some_length, and an ntheta*some_length array of theta power
-
+def getXYT(xyt_filename, match_only=False, rebuild=False, filepath=None):    
+    #Reads in a .npz file containing coordinate pairs in data space (hi, hj)
+    #And Hough space arrays covering theta space at each of those points
     if not os.path.isfile(xyt_filename):
-        #Fast Failure Case - This file does not exist.
         if match_only:
             return False
         else:
             raise ValueError('Input xyt_filename in getXYT matches no existing file')
     else:
-        #Attempts to extract header information for Matching, or else the data itself
         if xyt_filename.endswith('.npz'):
             data = np.load(xyt_filename, mmap_mode='r') #Allows for reading in very large files!
+            Hi = data['hi']
+            Hj = data['hj']
+            Hthets = data['hthets']
             if match_only:
                 try:
                     return all([ match_only[x] == data[string.lower(x)] for x in match_only.keys() ])
                 except KeyError:
                     return False
-            Hi = data['hi']
-            Hj = data['hj']
-            Hthets = data['hthets']
 
         elif xyt_filename.endswith('.fits'):
-            hdu_list = fits.open(xyt_filename, mode='readonly', memmap=True, save_backup=False, checksum=True) #Allows for reading in very large files!
+            hdu_list = fits.open(xyt_filename, mode='readonly', memmap=True, save_backup=False, checksum=True)
             header = hdu_list[0].header
             if match_only:
                 try:
                     return all([ match_only[x] == header[string.upper(x)] for x in match_only.keys() ])
                 except KeyError:
                     return False
+
             data = hdu_list[1].data
             Hi = data['hi'] 
             Hj = data['hj'] 
@@ -323,7 +320,7 @@ def getXYT(xyt_filename, match_only=False):
             xyt = np.memmap(tempfile.TemporaryFile(), dtype=DTYPE, mode='w+', shape=(datay, datax, ntheta))
             xyt.fill(0.0)
         else:
-            print 'Warning: Reconstructing very large array in memory! Set BUFFER to True!' 
+            print 'Warning: Reconstructing very large array in memory! Set BUFFER to True!' #TODO [y]/n____________________-_
             xyt = np.zeros((datay, datax, ntheta))
         coords = zip(Hj, Hi)
         for c in range(len(coords)):
@@ -339,7 +336,7 @@ def bad_pixels(data):
     #Returns an array of the same shape as data
     #NaN values MUST ALWAYS be considered bad.
     #Bad values become 1, all else become 0
-    data = np.array(data, np.float) #TODO________________________Double Check This?
+    data = np.array(data, np.float)
     
     #IMPLEMENTATION1: Do Comparisons which are VERY different depending on boolean choices 
     try:
@@ -408,17 +405,15 @@ def all_within_diameter_are_good(data, diameter):
         x = (x_arr + i).astype(np.int).clip(0, datax-1)
         y = (y_arr + j).astype(np.int).clip(0, datay-1)
         mask[y, x] = 0 
-        update_progress((c+1)/float(N), message='Masking:', final_message='Finished Masking:') 
+        update_progress((c+1)/float(N), message='Masking:', final_message='Finished Masking:') #TODO_______________________________________________________________Progress Bar
     '''
     #IMPLEMENTATION2: For each good pixel, 'Not Any Bad pixels near me'
-    update_progress(0.0)
     coords = zip(*np.nonzero(mask))
     for c in range(len(coords)):
         j,i = coords[c]
         x = (x_arr + i).astype(np.int).clip(0, datax-1)
         y = (y_arr + j).astype(np.int).clip(0, datay-1)
         mask[j][i] = np.logical_not(np.any(bad_pixels( data[y, x] )))
-        update_progress((c+1)/float(N), message='Masking:', final_message='Finished Masking:') 
     '''
     return mask 
 
@@ -432,19 +427,14 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
         #Reading Data
         if filepath.endswith('.fits'):
             #Fits file handling
-            hdu = fits.open(filepath, memmap=True)[0] #TODO___________________Assumes all data is in first HDU
-            data = hdu.data 
+            hdu = fits.open(filepath, memmap=True)[0] #Opens first HDU
+            data = hdu.data #Reads all data as an array
 
         elif filepath.endswith('.npy'):
-
-            data = np.load(filepath, mmap_mode='r') #Reads numpy files 
+            data = np.load(filepath, mmap_mode='r') #Reads numpy files #TODO
         
-        elif filepath.endswith('.npz'):
-            data = np.load(filepath, mmap_mode='r')[0] #TODO___________________Assumes data in first ndarray is 2D
-
         else:
-            data = scipy.ndimage.imread(filepath, flatten=True)[::-1] #Makes B/W array, reversing y-coords 
-
+            data = scipy.ndimage.imread(filepath, flatten=True)[::-1] #Makes B/W array, reversing y-coords         
     except:
         #Failure Reading Data
         if make_mask:
@@ -462,6 +452,13 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
         smr_mask = all_within_diameter_are_good(data, 2*smr+1)
         nans = np.empty(data.shape, dtype=np.int).fill(np.nan)
         wlen_mask = all_within_diameter_are_good( np.where(smr_mask, data, nans), wlen)
+
+        '''
+        datamin = np.nanmin(data)
+        datamax = np.nanmax(data)
+        datamean = np.nanmean(data)
+        print 'Data File Info, Min:', datamin, 'Mean:', datamean, 'Max:', datamax
+        '''
         return data, smr_mask, wlen_mask
 
 #Performs a circle-cut of given diameter on inkernel.
@@ -487,13 +484,12 @@ def umask(data, radius, smr_mask=None):
     
     #Convert to binary data
     bindata = np.greater(subtr_data, 0.0)
-    if smr_mask is None:
+    if smr_mask == None:
         return bindata
     else:
         return np.logical_and(smr_mask, bindata) #np.where(smr_mask, bindata, smr_mask)
 
-
-def fast_hough(in_arr, xyt): #, hout=None): 
+def fast_hough(in_arr, xyt): #, hout=None): #TODO_________________________________________#THIS IS ONE BOTTLENECK IN THE CODE
 
     assert in_arr.ndim == 2 
     assert xyt.ndim == 3
@@ -505,13 +501,12 @@ def fast_hough(in_arr, xyt): #, hout=None):
     
     '''
     if hout == None:
-        return np.einsum('ijk,ij', xyt, in_arr) #, dtype=np.int) 
+        return np.einsum('ijk,ij', xyt, in_arr) #, dtype=np.int) #TODO_____________________________EINSTEIN SUMMATION
     else:
         assert hout.ndim == 1
         assert hout.shape[0] == xyt.shape[2]
         np.einsum('ijk,ij', xyt, in_arr, out=hout)
     '''
-
     #IMPLEMENTATION1: Copy 2D array into 3D stack, and multiply by other stack (SLOW)
     #cube = np.repeat(in_arr[:,:,np.newaxis], repeats=ntheta, axis=2)*xyt
      
@@ -525,6 +520,31 @@ def fast_hough(in_arr, xyt): #, hout=None):
         
     #return np.sum(np.sum( cube , axis=0, dtype=np.int), axis=0, dtype=np.float) #WORKS FAST AND DIVIDES PROPERLY
     #return np.sum(cube, axis=(1,0), dtype=np.int)
+
+'''
+try:
+    from cython_hough import fast_hough as new_fast_hough 
+    print 'Fast Hough Compiled in C'
+    fast_hough = new_fast_hough
+except:
+    pass
+'''
+    
+'''
+try:
+    ###Works, but without performance increase
+    from numba import autojit
+    fast_hough = autojit(fast_hough)
+
+    ###
+    #import numba
+    #from numba.types import i1, f4
+    #fast_hough = numba.jit(signature_or_function=fast_hough, argtypes=['f4[:](i1[:,:], i1[:,:,:], i1)'], target='cpu')(fast_hough)
+    print 'Autojit is go!'
+except:
+    print 'Failure to autojit..'
+    #raise
+'''
 
 def houghnew(image, cos_theta, sin_theta):
     assert image.ndim == 2 
@@ -561,30 +581,31 @@ def houghnew(image, cos_theta, sin_theta):
         indices = shifted.astype(np.int)
         
         # use bin count to accumulate the coefficients
-        bincount = np.bincount(indices) 
+        bincount = np.bincount(indices) #TODO______________________ bincount method?
 
         # finally assign the proper values to the out array
         out[:len(bincount), i] = bincount
+        #out.T[i] = bincount
 
     return out[np.floor(nr_bins/2), :]
 
 
-def all_thetas(wlen, theta, original):
-    assert theta.ndim == 1 
+def all_thetas(wlen, thetbins):
+    assert thetbins.ndim == 1 
     assert wlen%2
 
     #Initialize a circular window of ones
     window = circ_kern(wlen)
     assert window.shape[0] == window.shape[1]
-    if not original:
+    if not ORIGINAL:
         window[:,:wlen//2] = 0
     
     # precompute the sin and cos of the angles
-    cos_theta = np.cos(theta)
-    sin_theta = np.sin(theta)
+    cos_theta = np.cos(thetbins)
+    sin_theta = np.sin(thetbins)
     
     #Makes prism; output has dimensions (y, x, theta)
-    ntheta = len(theta)
+    ntheta = len(thetbins)
     #outshape = (wlen, wlen, ntheta)
     out = np.zeros(window.shape+(ntheta,), np.int)
     coords = zip( *np.nonzero(window))
@@ -595,16 +616,22 @@ def all_thetas(wlen, theta, original):
         out[j, i, :] = houghnew(w_1, cos_theta, sin_theta)
 
     if not ORIGINAL:
-        out[:,:,ntheta//2:] = out[::-1,::-1,ntheta//2:] 
+        out[:,:,ntheta//2:] = out[::-1,::-1,ntheta//2:] #TODO _______________________________________________ CYLINDER
         out[:wlen//2+1,:,ntheta//2] = 0
         out[wlen//2:,:,0] = 0
 
+    '''
+    plt.imshow(out[:, :, 0])
+    plt.show()
+    plt.imshow(out[:, :, 1])
+    plt.show()
+    '''
     return out 
 
 
-def theta_rht(theta_array, original, uv=False):
+def theta_rht(theta_array, uv=False):
     #Maps an XYT cube into a 2D Array of angles- weighted by their significance
-    if original:
+    if ORIGINAL:
         thetas = np.linspace(0.0, np.pi, len(theta_array), endpoint=False, retstep=False)
         ys = theta_array*np.sin(2.0*thetas)
         xs = theta_array*np.cos(2.0*thetas)    
@@ -617,13 +644,13 @@ def theta_rht(theta_array, original, uv=False):
         angle = np.arctan2(np.sum(ys), np.sum(xs)) 
         
     if not uv:
-        #Returns ONLY the theta_rht as described by the literature for a given array
         return angle
     else:
-        #Maps an array of theta power to an angle, and the components of one unit vector
+        #OR It can map all arrays to the vector (x, y) of theta power at one point
         #MADE FOR USE WITH plt.quiver()
         return angle, np.cos(angle), np.sin(angle)
-
+    
+    
 
 def buffershape(ntheta, filesize=FILECAP):
     #Shape of maximum sized array that can fit into a SINGLE buffer file 
@@ -647,7 +674,7 @@ def concat_along_axis_0(memmap_list):
     #Combines memmap objects of the same shape, except along axis 0,
     #BY LEAVING THEM ALL ON DISK AN APPENDING THEM SEQUENTIALLY
     if len(memmap_list) == 0:
-        raise ValueError('Failed to buffer any data!') 
+        raise ValueError('Failed to buffer any data!') #TODO_______________________________Unhandled Exception
 
     elif len(memmap_list) == 1:
         return memmap_list[0]
@@ -659,7 +686,7 @@ def concat_along_axis_0(memmap_list):
         shapes = [memmap.shape[1:] for memmap in memmap_list]
         assert all([x==shapes[0] for x in shapes[1:]])
 
-        big_memmap = np.memmap(os.path.join(temp_dir, +'rht.dat'), dtype=DTYPE, mode='r+', shape=(sum(lengths), *shapes[0])  )   
+        big_memmap = np.memmap(os.path.join(temp_dir, +'rht.dat'), dtype=DTYPE, mode='r+', shape=(sum(lengths), *shapes[0])  )   #TODO ______________________________________________________
         lengths.insert(0, sum(lengths))
         for i in range(len(memmap_list)):
             temp_file = memmap_list[i]
@@ -692,7 +719,7 @@ def concat_along_axis_0(memmap_list):
 
         return reduce(append_memmaps, others, initializer=seed)
 
-def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filename, message): 
+def window_step(data, wlen, frac, smr, smr_mask, wlen_mask, xyt_filename, message): 
 
     assert frac == float(frac) #Float
     assert 0 <= frac <= 1 #Fractional
@@ -707,17 +734,17 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
     #Needed values
     r = wlen//2 
     ntheta = ntheta_w(wlen)
-    if original:
+    if ORIGINAL:
         theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
     else:
-        theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True) #Maintains ntheta by doubling dtheta
+        theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)
 
     #Cylinder of all lit pixels along a theta value
-    xyt = all_thetas(wlen=wlen, theta=theta, original=original) 
+    xyt = all_thetas(wlen, theta) 
     xyt.setflags(write=0)
     
     #Unsharp masks the whole data set
-    masked_udata = umask(data=data, radius=smr, smr_mask=smr_mask)
+    masked_udata = umask(data, smr, smr_mask=smr_mask)
     masked_udata.setflags(write=0)
 
     #Hough transform of same-sized circular window of 1's
@@ -736,8 +763,28 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
     
     #Bonus Backprojection Creation
     backproj = np.zeros_like(data)
+    
+    if not BUFFER:
+        #Number of RHT operations that will be performed, and their coordinates
+        coords = zip( *np.nonzero( wlen_mask))
+        update_progress(0.0)
+        N = len(coords)
+        for c in range(N):
+            j,i = coords[c]
+            h = fast_hough(masked_udata[j-r:j+r+1, i-r:i+r+1], xyt)
+            hout = nptruediv(h, h1)
+            hout *= npge(hout, frac)
+            if np.any(hout):
+                htapp(hout)
+                hiapp(i)
+                hjapp(j)
+                backproj[j][i] = np.sum(hout) 
+            update_progress((c+1)/float(N), message=message, final_message=message)
+            #End
+        putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets), wlen, smr, frac, backproj=np.divide(backproj, np.amax(backproj)) ) #Saves data
+        return True 
 
-    if BUFFER:
+    else:
         #Preparing to write hout to file during operation so it does not over-fill RAM
         temp_dir = tempfile.mkdtemp()
         temp_files = [] #List of memmap objects
@@ -746,41 +793,28 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
             return os.path.join(temp_dir, 'rht'+ str(len(temp_files)) + '.dat')
         #print 'Temporary files in:', temp_dir 
 
-    #Number of RHT operations that will be performed, and their coordinates
-    update_progress(0.0)
-    coords = zip( *np.nonzero( wlen_mask))
-    N = len(coords)
-    for c in range(N):
-        j,i = coords[c]
-        h = fast_hough(masked_udata[j-r:j+r+1, i-r:i+r+1], xyt)
+        #Number of RHT operations that will be performed, and their coordinates
+        update_progress(0.0)
+        coords = zip( *np.nonzero( wlen_mask))
+        N = len(coords)
+        for c in range(N):
+            j,i = coords[c]
+            h = fast_hough(masked_udata[j-r:j+r+1, i-r:i+r+1], xyt)
+            hout = nptruediv(h, h1) 
+            hout *= npge(hout, frac)
+            if np.any(hout):
+                htapp(hout)
+                hiapp(i)
+                hjapp(j)
+                backproj[j][i] = np.sum(hout) 
+                if len(Hthets) == buffer_shape[0]:
+                    temp_files.append( np.memmap( next_temp_filename(), dtype=DTYPE, mode='w+', shape=buffer_shape )) #Creates full memmap object
+                    theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
+                    temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
+                    Hthets = [] #Reset Hthets
+            update_progress((c+1)/float(N), message=message, final_message=message)
+            #End
 
-        # Original RHT Implementation Subtracts Threshold From All Theta-Power Spectrums
-        hout = nptruediv(h, h1) - frac
-        hout *= npge(hout, 0.0)
-        # Deprecated Implementation Leaves Theta-Power Spectrum AS IS
-        #hout = nptruediv(h, h1)
-        #hout *= npge(hout, frac)
-
-        if np.any(hout):
-            htapp(hout)
-            hiapp(i)
-            hjapp(j)
-            backproj[j][i] = np.sum(hout) 
-
-            if BUFFER and len(Hthets) == buffer_shape[0]:
-                temp_files.append( np.memmap( next_temp_filename(), dtype=DTYPE, mode='w+', shape=buffer_shape )) #Creates full memmap object
-                theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
-                temp_files[-1][:] = theta_array[:] #Write array to last memmapped object in list
-                Hthets = [] #Reset Hthets
-
-        update_progress((c+1)/float(N), message=message, final_message=message)
-        #End
-
-    if not BUFFER:
-        putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets), wlen, smr, frac, original=original, backproj=np.divide(backproj, np.amax(backproj)) ) #Saves data
-        return True 
-
-    else:
         if len(Hthets) > 0:
             temp_files.append( np.memmap( next_temp_filename(), dtype=DTYPE, mode='w+', shape=(len(Hthets), ntheta)  )) #Creates small memmap object
             theta_array = np.array(Hthets, dtype=DTYPE) #Convert list to array
@@ -789,8 +823,10 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
         #print 'Converting list of buffered hthet arrays into final XYT cube'
         converted_hthets = concat_along_axis_0(temp_files) #Combines memmap objects sequentially
         converted_hthets.flush()
-        putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets, wlen, smr, frac, original=original, backproj=np.divide(backproj, np.amax(backproj)) ) #Saves data
+        putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets, wlen, smr, frac, backproj=np.divide(backproj, np.amax(backproj)) ) #Saves data
+        
         del converted_hthets
+
         
         def rmtree_failue(function, path, excinfo):
             try:
@@ -803,30 +839,27 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
                     os.remove(obj)
                 os.removedirs(temp_dir)
             except:
-                print 'Failed to delete temporary files:', path 
+                print 'Failed to delete:', path 
 
         shutil.rmtree(temp_dir, ignore_errors=False, onerror=rmtree_failue)
+
         return True
 
 #-----------------------------------------------------------------------------------------
 #Interactive Functions
 #-----------------------------------------------------------------------------------------
 
-def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR):
-
+def rht(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     filepath: String path to source data, which will have the Rolling Hough Transform applied
-
     force: Boolean indicating if rht() should still be run, even when output exists for these inputs
-    original: Boolean if one should use the original Rolling Hough Transform
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
     smr: Integer radius of gaussian smoothing kernel to be applied to an data
-    
+
     Saves:
-        X-Y-Theta Power Arrays
-        Backprojection
+        X-Y-ThetaPower Array --> name_xyt.npz
 
     return: Boolean, if the function succeeded
     '''
@@ -847,23 +880,20 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR)
         return False
 
     try:
-
-        xyt_filename = xyt_name_factory(filepath, wlen=wlen, smr=smr, frac=frac, original=original)
+        xyt_filename = xyt_name_factory(filepath, wlen, smr, frac, double=ORIGINAL)
         
-        if (not force) and os.path.isfile(xyt_filename):
-            #If the program recognizes that the RHT has already been completed, it will not rerun
-            #This CAN BE overridden by force
+        if not force and os.path.isfile(xyt_filename):
             return True
 
         print '1/4:: Retrieving Data from:', filepath
         data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
         datay, datax = data.shape
 
-        print '2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)+',', 'Original:', str(original)
+        print '2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)
         
         message = '3/4:: Running RHT...'
-
-        success = window_step(data=data, wlen=wlen, frac=frac, smr=smr, original=original, smr_mask=smr_mask, wlen_mask=wlen_mask, xyt_filename=xyt_filename, message=message) #TODO__________________
+        success = window_step(data, wlen, frac, smr, smr_mask, wlen_mask, xyt_filename, message) #TODO__________________
+        
 
         print '4/4:: Successfully Saved Data As', xyt_filename
         return success
@@ -872,34 +902,85 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR)
         raise #__________________________________________________________________________________________________________ Raise
         return False
 
-def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORIGINAL):
 
+def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
-    filepath: String path to source data, which will have the Rolling Hough Transform applied
+    filepath: String path to source data, used in forcing and backprojection
+    force: Boolean indicating if rht() should be run, even when required_files are found
 
-    force: Boolean indicating if rht() should still be run, even when output exists for these inputs
-    original: Boolean if one should use the original Rolling Hough Transform
+    wlen: Diameter of a 'window' to be evaluated at one time
+    frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
+    smr: Integer radius of gaussian smoothing kernel to be applied to an data
+
+    Saves:
+        Backprojection --> name_backproj.npy
+        ThetaSpectrum --> name_spectrum.npy
+
+    return: Boolean, if the function succeeded
+    '''
+    #Makes sure relevant files are present! 
+    filename = filename_from_path(filepath)
+    xyt_filename = filename + '_xyt.fits'
+    required_files = [xyt_filename]
+    any_missing = any([not os.path.isfile(f) for f in required_files])
+    if any_missing or force:
+        #Runs rht(filepath), after clearing old output, since that needs to be done
+        for f in required_files:
+            try:
+                #Try deleting obsolete output
+                os.remove(f)
+            except:
+                #Assume it's not there
+                continue 
+        rht(filepath, force=force, wlen=wlen, frac=frac, smr=smr) 
+
+    #Proceed with iterpreting the rht output files
+    hi, hj, hthets = getXYT(xyt_filename, rebuild=False)
+
+    #Spectrum *Length ntheta array of theta power (above the threshold) for whole data*
+    '''
+    if ORIGINAL:
+        theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)
+        specturm = 
+    else:
+    '''
+    spectrum = np.sum(hthets, axis=0) #TODO___________________________Single/Double-Sided
+    spectrum_filename = filename + '_spectrum.npy'
+    np.save(spectrum_filename, np.array(spectrum))
+
+    #Backprojection only *Full Size* #Requires data
+    data = getData(filepath)
+    datay, datax = data.shape
+    backproj = np.zeros_like(data)
+    coords = zip(hi, hj)
+    for c in range(len(coords)):
+        backproj[coords[c][1]][coords[c][0]] = np.sum(hthets[c]) 
+    np.divide(backproj, np.sum(backproj), backproj)
+    backproj_filename = filename + '_backproj.npy'
+    np.save(backproj_filename, np.array(backproj))
+
+    print 'Interpreting... Success'
+    return True
+
+    
+def viewer(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
+    '''
+    filepath: String path to source data, used in forcing and backprojection
+    force: Boolean indicating if interpret() should be run, even when required_files are found
 
     wlen: Diameter of a 'window' to be evaluated at one time
     frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
     smr: Integer radius of gaussian smoothing kernel to be applied to an data
     
-    Displays:
-        ?
-
-    Saves:
-        ?
+    Plots:
+        name_backproj.npy --> Backprojection 
+        name_spectrum.npy --> ThetaSpectrum, Linearity
 
     return: Boolean, if the function succeeded
     '''
-
-
-    print 'viewer() is currently in disrepair! Exiting to avoid unpleasant results!'
-    return False 
-
     #Makes sure relevant files are present!____________________
     filename = filename_from_path(filepath)
-    xyt_filename = filename + '_xyt.fits'  
+    xyt_filename = filename + '_xyt.fits'  #___________________________________________________TODO, Keep all interpreting in Interpret
     backproj_filename = filename + '_backproj.npy'
     spectrum_filename = filename + '_spectrum.npy'
     required_files = [backproj_filename, spectrum_filename, xyt_filename]
@@ -913,7 +994,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
             except:
                 #Assume it's not there
                 continue 
-        interpret(filepath, force=force, wlen=wlen, frac=frac, smr=smr, original=original) 
+        interpret(filepath, force=force, wlen=wlen, frac=frac, smr=smr) 
 
     #Loads in relevant files and data
     data = getData(filepath) #data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
@@ -927,13 +1008,13 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
 
     #Produce Specific Plots
     masked_udata = umask(data, smr)
-    log = np.log(np.where( np.isfinite(data), data, np.ones_like( data) ))
+    log = np.log(np.where( np.isfinite(data), data, np.ones_like( data) )) #TODO Warnings?
     U = np.zeros_like(hi)
     V = np.zeros_like(hj)
     C = np.zeros((len(U)), dtype=np.float)
     coords = zip(hi, hj)
     for c in range(len(coords)):
-        C[c], U[c], V[c] = theta_rht(hthets[c], original, uv=True)
+        C[c], U[c], V[c] = theta_rht(hthets[c], uv=True)
     C *= np.isfinite(C)
     if ORIGINAL:
         C /= np.pi
@@ -1002,7 +1083,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     print 'Theta Spectrum'
 
     plt.plot(np.linspace(0.0, 2*180.0, num=ntheta, endpoint=False), spectrum) #___________---2*
-    
+    #___________________________________TODO SAVE PLOT
     plt.show()
     cleanup()
     
@@ -1026,9 +1107,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     return True
 
 
-
-def main(source=None, display=False, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR):
-
+def main(source=None, display=False, force=False, wlen=WLEN, frac=FRAC, smr=SMR):
     '''
     source: A filename, or the name of a directory containing files to transform
     display: Boolean flag determining if the input is to be interpreted and displayed
@@ -1067,25 +1146,23 @@ def main(source=None, display=False, force=False, original=ORIGINAL, wlen=WLEN, 
     if len(pathlist) == 0:
         print 'Invalid source encountered in main(); no valid images found.'
         return False
+    #____________________________________________________________________________SOURCE IS CLEAN
 
     #Run RHT Over All Valid Inputs 
     announce(['Fast Rolling Hough Transform by Susan Clark', 'Started for: '+source])
+    #TODO batch progress bar
 
-    summary = [] #TODO__________________________________________________________________________________ batch progress bar
-
+    summary = []
     for path in pathlist:
         success = True
         try:
             if (display):
-
-                success = viewer(path, force=force, original=original, wlen=wlen, frac=frac, smr=smr)
+                success = viewer(path, force=force, wlen=wlen, frac=frac, smr=smr)
             else:
-                success = rht(path, force=force, original=original, wlen=wlen, frac=frac, smr=smr)
-
+                success = rht(path, force=force, wlen=wlen, frac=frac, smr=smr)
         except:
             success = False
-            if DEBUG:
-                raise 
+            raise #____________________________________________________________________________________________________________________HANG??
         finally:
             if success:
                 summary.append(path+': Passed')
@@ -1095,18 +1172,19 @@ def main(source=None, display=False, force=False, original=ORIGINAL, wlen=WLEN, 
     announce(summary)
     return True
 
+
 #-----------------------------------------------------------------------------------------
 #Initialization 3 of 3: Precomputed Objects
 #-----------------------------------------------------------------------------------------
 
-
+#TODO
         
 #-----------------------------------------------------------------------------------------
 #Command Line Mode
 #-----------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    help = '''Rolling Hough Transform Command Line Utility
+    help = '''Rolling Hough Transform Utility
 
 Command Line Argument Format:
  >>>python rht.py arg1 arg2 ... argn 
@@ -1116,34 +1194,35 @@ NO ARGS:
  >>>python rht.py
 
 SINGLE ARGS:
- pathname ==> Input file or directory to run the Default RHT on
+ pathname ==> Input file or directory to run the RHT on
  >>>python rht.py dirname/filename.fits
   
- 'help', '-help', 'h', '-h' ==> Displays this message
- >>>python rht.py -h
+ -h ==> Displays this message
+ >>>python rht.py help
 
- 'params', 'param', 'p', '-p', '-params', '-param' ==> Displays Default Params
- >>>python rht.py param
+ -p ==> Displays Default Params
+ >>>python rht.py -p
  
 MULTIPLE ARGS:
- 1st ==> Input file or directory to run the RHT on
- 2nd:nth ==> Named inputs controlling parameters and flags
+ Creates 'dirname/filename_xyt.npz' for each input data
+ 1st ==> Path to input file or directory
+ 2nd:nth ==> Named inputs controlling params and flags
+
   Flags: 
-  'd', '-d', 'display', '-display'  ==> Ouput is to be Displayed
-  'f', '-f', 'force', '-force'      ==> Exisitng output is to be Forcefully overwritten
-  'o', 'orig', '-o', '-orig'        ==> The DOUBLE SIDED RHT is to be used
-  'n', 'new', '-n', '-new'          ==> The SINGLE SIDED RHT is to be used
+  -d  #Ouput is to be Displayed
+  -f  #Exisitng _xyt.fits is to be Forcefully overwritten
+
   Params:
-  'w', 'wlen', '-w', '-wlen' =value ==> Sets window diameter
-  's', 'smr', '-s', '-smr'   =value ==> Sets smoothing radius
-  'f', 'frac', '-f', '-frac' =value ==> Sets theta power threshold
-  'o', 'orig', '-o', '-orig' =value ==> Whether the DOUBLE SIDED RHT is used'''
+  -wlen=value  #Sets window diameter
+  -smr=value  #Sets smoothing radius
+  -frac=value  #Sets theta power threshold'''
     
     if len(sys.argv) == 1:
         #Displays the README file   
+        README = 'README'
         try:
             readme = open(README, 'r')
-            print readme.read(2000) 
+            print readme.read(2000) #TODO
             if len(readme.read(1)) == 1:
                 print ''
                 print '...see', README, 'for more information...'
@@ -1162,7 +1241,6 @@ MULTIPLE ARGS:
             params.append('wlen = '+str(WLEN))
             params.append('smr = '+str(SMR))
             params.append('frac = '+str(FRAC))
-            params.append('orignal = '+str(ORIGINAL))
             announce(params)
         else:
             main(source=SOURCE)
@@ -1179,40 +1257,30 @@ MULTIPLE ARGS:
         wlen = WLEN
         frac = FRAC
         smr = SMR
-        original = ORIGINAL
 
         for arg in args:
-            if not ('=' in arg):
+            if '=' not in arg:
                 #FLAGS which DO NOT carry values 
-                if arg.lower() in ['d', '-d', 'display', '-display']:
+                if arg.lower() in ['d', '-d', 'display', '-display' ]:
                     DISPLAY = True
-                elif arg.lower() in ['f', '-f', 'force', '-force']:
+                elif arg.lower() in ['f', '-f', 'force', '-force' ]:
                     FORCE = True
-                elif arg.lower() in ['n', 'new', '-n', '-new']:
-                    original = False
-                elif arg.lower() in ['o', 'original', 'orig', '-o', '-original', '-orig']:
-                    original = True
                 else:
                     print 'UNKNOWN FLAG:', arg
             else:
                 #PARAMETERS which DO carry values
                 argname = arg.lower().split('=')[0]
-
-                argval = arg.lower().split('=')[1] #TODO____________________________Allow for inputting value ranges
-
+                argval = arg.lower().split('=')[1] #TODO Handle errors
                 if argname in ['w', 'wlen', '-w', '-wlen']:
                     wlen = float(argval)
                 elif argname in ['s', 'smr', '-s', '-smr']:
                     smr = float(argval)
                 elif argname in ['f', 'frac', '-f', '-frac']:
                     frac = float(argval)
-                elif argname in ['o', 'original', 'orig', '-o', '-original', '-orig']:
-                    original = bool(argval)
                 else:
                     print 'UNKNOWN PARAMETER:', arg
 
-        main(source=SOURCE, display=DISPLAY, force=FORCE, original=original, wlen=wlen, frac=frac, smr=smr)
-
+        main(source=SOURCE, display=DISPLAY, force=FORCE, wlen=wlen, frac=frac, smr=smr)
 
     exit()
 
@@ -1221,4 +1289,4 @@ MULTIPLE ARGS:
 #-----------------------------------------------------------------------------------------
 
 #This is the Rolling Hough Transform, described in Clark, Peek, Putman 2014 (arXiv:1312.1338).
-#Modifications to the RHT have been made by Lowell Schudel, les2185@columbia.edu, CC'16.
+#Modifications to the RHT have been made by Lowell Schudel, CC'16.
