@@ -1091,6 +1091,11 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
 
     return: Boolean, if the function succeeded
     '''
+    
+    # Setting 'drht' to True means that the internal parameter 'original' is False.
+    if drht == True:
+        original = False
+    
     # Ensure that the input is a non-None, non-Empty string
     while source is None or type(source) != str or len(source)==0:
         try:
@@ -1213,7 +1218,7 @@ MULTIPLE ARGS:
             params.append('wlen = '+str(WLEN))
             params.append('smr = '+str(SMR))
             params.append('frac = '+str(FRAC))
-            params.append('orignal = '+str(ORIGINAL))
+            params.append('standard rht = '+str(ORIGINAL))
             announce(params)
         else:
             main(source=SOURCE)
@@ -1240,6 +1245,7 @@ MULTIPLE ARGS:
                 elif arg.lower() in ['f', '-f', 'force', '-force']:
                     FORCE = True
                 elif arg.lower() in ['drht', 'directional', 'direc', 'direct', '-drht', '-directional', '-direc', '-direct']:
+                    drht = True
                     original = False
                 #elif arg.lower() in ['o', 'original', 'orig', '-o', '-original', '-orig']:
                 #    original = True
@@ -1263,7 +1269,7 @@ MULTIPLE ARGS:
                 else:
                     print 'UNKNOWN PARAMETER:', arg
 
-        main(source=SOURCE, display=DISPLAY, force=FORCE, original=original, wlen=wlen, frac=frac, smr=smr)
+        main(source=SOURCE, display=DISPLAY, force=FORCE, drht=drht, wlen=wlen, frac=frac, smr=smr)
 
 
     exit()
