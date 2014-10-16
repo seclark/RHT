@@ -1188,7 +1188,7 @@ MULTIPLE ARGS:
                     DISPLAY = True
                 elif arg.lower() in ['f', '-f', 'force', '-force']:
                     FORCE = True
-                elif arg.lower() in ['dRHT', 'directional', 'direc', 'direct', '-dRHT', '-ndirectional', '-direc', '-direct']:
+                elif arg.lower() in ['drht', 'directional', 'direc', 'direct', '-drht', '-directional', '-direc', '-direct']:
                     original = False
                 #elif arg.lower() in ['o', 'original', 'orig', '-o', '-original', '-orig']:
                 #    original = True
