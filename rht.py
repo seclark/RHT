@@ -1132,12 +1132,12 @@ MULTIPLE ARGS:
   'd', '-d', 'display', '-display'  ==> Ouput is to be Displayed
   'f', '-f', 'force', '-force'      ==> Exisitng output is to be Forcefully overwritten
   'o', 'orig', '-o', '-orig'        ==> The DOUBLE SIDED RHT is to be used
-  'n', 'new', '-n', '-new'          ==> The SINGLE SIDED RHT is to be used
+  'drht', 'directional', 'direc', '-drht', '-directional', '-direc',  ==> The DIRECTIONAL RHT is to be used
   Params:
   'w', 'wlen', '-w', '-wlen' =value ==> Sets window diameter
   's', 'smr', '-s', '-smr'   =value ==> Sets smoothing radius
   'f', 'frac', '-f', '-frac' =value ==> Sets theta power threshold
-  'o', 'orig', '-o', '-orig' =value ==> Whether the DOUBLE SIDED RHT is used'''
+  '''
     
     if len(sys.argv) == 1:
         #Displays the README file   
