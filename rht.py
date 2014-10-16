@@ -1191,14 +1191,14 @@ if __name__ == "__main__":
         sys.argv.append('-h')
     args = parser.parse_args()
 
-    if args.polar is False:
-        ORIGINAL = True
+    if args.polar is True:
+        drht = True
     else:
-        ORIGINAL = False
+        drht = False
 
     for f in args.files: # loop over input files
         main(source=f, display=args.display, force=args.force, wlen=args.wlen,
-            frac=args.thresh, smr=args.smr, drht=ORIGINAL)
+            frac=args.thresh, smr=args.smr, drht=drht)
     exit()
 
 #-----------------------------------------------------------------------------------------
