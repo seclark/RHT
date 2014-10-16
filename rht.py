@@ -341,6 +341,7 @@ def getXYT(xyt_filename, match_only=False):
         else:
             raise ValueError('Supported input types in getXYT include .npz and .fits only')
 
+    rebuild = None
     # Formats output properly
     if rebuild and filepath is not None:
         # Can recreate an entire 3D array of mostly 0s.
@@ -745,8 +746,8 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
     ntheta = ntheta_w(wlen)
     
     # For the dRHT, we maintain dtheta by doubling ntheta.
-    if not original:
-        ntheta = ntheta*2
+    #if not original:
+    #    ntheta = ntheta*2
     
     if original:
         theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
@@ -1099,6 +1100,8 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
     # Setting 'drht' to True means that the internal parameter 'original' is False.
     if drht == True:
         original = False
+    else:
+        original = True
     
     # Ensure that the input is a non-None, non-Empty string
     while source is None or type(source) != str or len(source)==0:
