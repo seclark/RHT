@@ -1173,8 +1173,6 @@ if __name__ == "__main__":
         usage='%(prog)s [options] file(s)',
         formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('files',nargs='+',help="FITS file(s)")
-    parser.add_argument('-d','--display',help="Display output",
-        action='store_true')
     parser.add_argument('-f','--force', action="store_true",
         help="force overwriting of existing output _xyt.fits files")
     parser.add_argument('-w','--wlen',default=WLEN,type=int,
@@ -1183,22 +1181,17 @@ if __name__ == "__main__":
         help="Smoothing radius for unsharp mask in pixels")
     parser.add_argument('-t','--thresh',default=FRAC,type=float,
         help="Fraction (Threshold) of a given theta that must be 'lit up' to be counted")
-    parser.add_argument('-p','--polar',action="store_true",
-        help="Compute full polar RHT (directional)")
+    parser.add_argument('-d','--drht',action="store_true",
+        help="Compute Directional RHT (full polar)")
     parser.add_argument('--version',action='version',version='%(prog)s 1.0')
 
     if len(sys.argv) == 1: # no arguments given, so add -h to get help msg
         sys.argv.append('-h')
     args = parser.parse_args()
 
-    if args.polar is True:
-        drht = True
-    else:
-        drht = False
-
     for f in args.files: # loop over input files
-        main(source=f, display=args.display, force=args.force, wlen=args.wlen,
-            frac=args.thresh, smr=args.smr, drht=drht)
+        main(source=f, force=args.force, wlen=args.wlen,
+            frac=args.thresh, smr=args.smr, drht=args.drht)
     exit()
 
 #-----------------------------------------------------------------------------------------

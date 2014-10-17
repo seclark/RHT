@@ -2,7 +2,7 @@
 The Rolling Hough Transform (RHT)
 ==================================
 
-This is the Rolling Hough Transform, described in Clark, Peek, Putman 2014 (arXiv:1312.1338).
+This is the Rolling Hough Transform, described in Clark, Peek, & Putman 2014, ApJ 789, 82 (arXiv:1312.1338).
 
 Included is a modified RHT which distinguishes between pixels located at theta, and at theta+pi, in polar coordinates centered on any given image pixel. This is achieved by searching along radii with twice the dtheta of the diameters searched in the RHT. This Transform is still in development.
 
@@ -73,22 +73,18 @@ SINGLE ARGS:
   
  'help', '-help', 'h', '-h' ==> Displays this message
  >>>python rht.py -h
-
- 'params', 'param', 'p', '-p', '-params', '-param' ==> Displays Default Params
- >>>python rht.py param
  
 MULTIPLE ARGS:
  1st ==> Input file or directory to run the RHT on
  2nd:nth ==> Named inputs controlling parameters and flags
   Flags: 
-  'd', '-d', 'display', '-display'                ==> Ouput is to be Displayed
-  'f', '-f', 'force', '-force'                    ==> Exisitng output is to be Forcefully overwritten
-  'drht', 'directional', '-drht', '-directional'  ==> The SINGLE SIDED RHT is to be used
+  '-f', '--force'         ==> Force overwrite RHT output run with same parameters.
+  '-d', '--drht'          ==> Compute Directional RHT (full polar domain).
   
   Params:
-  'w', 'wlen', '-w', '-wlen' =value ==> Sets window diameter
-  's', 'smr', '-s', '-smr'   =value ==> Sets smoothing radius
-  'f', 'frac', '-f', '-frac' =value ==> Sets theta power threshold
+  '-w', '--wlen' =value   ==> Sets window diameter
+  '-s', '--smr' =value    ==> Sets smoothing radius
+  '-t', '--thresh' =value ==> Sets theta power threshold
 
 ==================================
 Directory Structure
