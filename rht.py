@@ -492,7 +492,7 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
     else:
         # Mask Needed, cuts away smr radius from bads, then wlen from bads 
         smr_mask = all_within_diameter_are_good(data, 2*smr+1)
-        nans = np.empty(data.shape, dtype=np.int).fill(np.nan)
+        nans = np.empty(data.shape, dtype=np.float).fill(np.nan)
         wlen_mask = all_within_diameter_are_good( np.where(smr_mask, data, nans), wlen)
         return data, smr_mask, wlen_mask
 
