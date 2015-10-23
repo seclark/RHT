@@ -83,7 +83,7 @@ FILECAP = int(5e8)
 
 
 # Excluded Data Types
-BAD_0 = True
+BAD_0 = False
 BAD_INF = True
 BAD_Neg = False 
 
