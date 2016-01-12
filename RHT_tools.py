@@ -24,7 +24,7 @@ def get_thets(wlen, save = True):
     
     return thets
 
-def get_RHT_data(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits"):
+def get_RHT_data(xyt_filename = "filename.fits"):
         
     hdu_list = fits.open(xyt_filename, mode='readonly', memmap=True, save_backup=False, checksum=True) #Allows for reading in very large files!
     print "loading data from ", xyt_filename
@@ -42,7 +42,7 @@ def get_RHT_data(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits
 def grid_QU_RHT(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits", root = "/your_path/", fn = "filename", save = True):
     
     # Load RHT data
-    ipoint, jpoints, hthets, naxis1, naxis2 = get_RHT_data(wlen = wlen, smr = smr, thresh = thresh, xyt_filename = xyt_filename)
+    ipoint, jpoints, hthets, naxis1, naxis2 = get_RHT_data(xyt_filename = xyt_filename)
   
     # Values of theta for RHT output
     thets = get_thets(wlen, save = False)
