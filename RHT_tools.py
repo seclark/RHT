@@ -37,7 +37,7 @@ def get_RHT_data(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits
     naxis1 = header["NAXIS1"]
     naxis2 = header["NAXIS2"]
     
-    return ipoint, jpoints, hthets, naxis1, naxis2
+    return ipoints, jpoints, hthets, naxis1, naxis2
 
 def grid_QU_RHT(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits", root = "/your_path/", fn = "filename", save = True):
     
