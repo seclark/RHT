@@ -39,7 +39,7 @@ def get_RHT_data(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits
     
     return ipoint, jpoints, hthets, naxis1, naxis2
 
-def grid_QU_RHT(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits", root = "/your_path/" fn = "filename", save = True):
+def grid_QU_RHT(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits", root = "/your_path/", fn = "filename", save = True):
     
     # Load RHT data
     ipoint, jpoints, hthets, naxis1, naxis2 = get_RHT_data(wlen = wlen, smr = smr, thresh = thresh, xyt_filename = xyt_filename)
