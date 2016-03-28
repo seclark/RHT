@@ -2,14 +2,15 @@ from astropy.io import fits
 import numpy as np
 import math
 
-def get_thets(wlen, save = True):
+def get_thets(wlen, save = True, verbose = True):
     """
     Determine the values of theta for RHT output. These are determined by the window length (wlen)
     by Equation 2 in Clark+ 2014.
     """
 
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))
-    print 'ntheta is ', ntheta
+    if verbose is True:
+        print 'ntheta is ', ntheta
     dtheta = np.pi/ntheta
     
     #Thetas for binning   
