@@ -2,15 +2,14 @@ from astropy.io import fits
 import numpy as np
 import math
 
-def get_thets(wlen, save = True, verbose = True):
+def get_thets(wlen, save = True):
     """
     Determine the values of theta for RHT output. These are determined by the window length (wlen)
     by Equation 2 in Clark+ 2014.
     """
 
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))
-    if verbose is True:
-        print 'ntheta is ', ntheta
+    print 'ntheta is ', ntheta
     dtheta = np.pi/ntheta
     
     #Thetas for binning   
@@ -26,6 +25,9 @@ def get_thets(wlen, save = True, verbose = True):
     return thets
 
 def get_RHT_data(xyt_filename = "filename.fits"):
+    """
+    Loads in RHT data from file.
+    """
         
     hdu_list = fits.open(xyt_filename, mode='readonly', memmap=True, save_backup=False, checksum=True) #Allows for reading in very large files!
     print "loading data from ", xyt_filename
@@ -37,13 +39,16 @@ def get_RHT_data(xyt_filename = "filename.fits"):
     
     naxis1 = header["NAXIS1"]
     naxis2 = header["NAXIS2"]
+    wlen   = header['WLEN']
+    smr    = header['SMR']
+    thresh = header['FRAC']
     
-    return ipoints, jpoints, hthets, naxis1, naxis2
+    return ipoints, jpoints, hthets, naxis1, naxis2, wlen, smr, thresh
 
-def grid_QU_RHT(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits", root = "/your_path/", fn = "filename", save = True):
+def grid_QU_RHT(xyt_filename = "filename.fits", output_fn = "output_filename", save = True):
     
     # Load RHT data
-    ipoint, jpoints, hthets, naxis1, naxis2 = get_RHT_data(xyt_filename = xyt_filename)
+    ipoints, jpoints, hthets, naxis1, naxis2, wlen, smr, thresh = get_RHT_data(xyt_filename = xyt_filename)
   
     # Values of theta for RHT output
     thets = get_thets(wlen, save = False)
@@ -54,8 +59,7 @@ def grid_QU_RHT(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits"
     QRHTsq = np.zeros((naxis2, naxis1), np.float_)
     intrht = np.zeros((naxis2, naxis1), np.float_)
     
-    print naxis2, naxis1
-    
+    # Create dictionary of (i, j) points and their corresponding hthets array
     jipoints = zip(jpoints, ipoints)
     jih = dict(zip(jipoints, hthets))
     
@@ -63,11 +67,40 @@ def grid_QU_RHT(wlen = 75, smr = 15, thresh = 70, xyt_filename = "filename.fits"
     for s in jih.keys():
         QRHT[s], URHT[s], QRHTsq[s], URHTsq[s] = get_QU_RHT_unnorm(jih[s], thets, sqerror = True)
         intrht[s] = np.sum(jih[s])
-        
+    
+    # Save data using defined output_filename
     if save == True:       
-        np.save("U_RHT_"+fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", URHT)
-        np.save("Q_RHT_"+fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", QRHT)
-        np.save("U_RHT_sq_"+fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", URHTsq)
-        np.save("Q_RHT_sq_"+fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", QRHTsq)
-        np.save("intrht_"+fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", intrht) 
+        np.save("U_RHT_"+output_fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", URHT)
+        np.save("Q_RHT_"+output_fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", QRHT)
+        np.save("U_RHT_sq_"+output_fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", URHTsq)
+        np.save("Q_RHT_sq_"+output_fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", QRHTsq)
+        np.save("intrht_"+output_fn+"_w"+str(wlen)+"_s"+str(smr)+"_t"+str(thresh)+".npy", intrht) 
+        
+    return QRHT, URHT, URHTsq, QRHTsq, intrht
+        
+def get_QU_RHT_unnorm(hthets, thets, sqerror = True):
+    """ 
+    Return QHRT, URHT from single hthets
+    """
+
+    QRHT = np.sum(np.cos(2*thets)*hthets)
+    URHT = np.sum(np.sin(2*thets)*hthets)
+    
+    # These values are useful for calculating RHT error
+    if sqerror == True:
+        QRHTsq = np.sum((np.cos(2*thets))**2*hthets)
+        URHTsq = np.sum((np.sin(2*thets))**2*hthets)
+    
+    # NaN anything which is bad data
+    if np.sum(hthets) <= 0:
+        QRHT = None
+        URHT = None
+        QRHTsq = None
+        URHTsq = None
+    
+    if sqerror == True:
+        return QRHT, URHT, QRHTsq, URHTsq
+    
+    else:
+        return QRHT, URHT
 
