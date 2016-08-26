@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="UTF-8">
+    <title>RHT by seclark</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+  </head>
+  <body>
+    <section class="page-header">
+      <h1 class="project-name">RHT</h1>
+      <h2 class="project-tagline">The Rolling Hough Transform</h2>
+      <a href="https://github.com/seclark/RHT" class="btn">View on GitHub</a>
+      <a href="https://github.com/seclark/RHT/zipball/master" class="btn">Download .zip</a>
+      <a href="https://github.com/seclark/RHT/tarball/master" class="btn">Download .tar.gz</a>
+    </section>
+
+    <section class="main-content">
+      <h2>
+<a id="introduction" class="anchor" href="#introduction" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Introduction</h2>
+
+<p>This is the Rolling Hough Transform, described in <a href="http://adsabs.harvard.edu/cgi-bin/bib_query?arXiv:1312.1338">Clark, Peek, &amp; Putman 2014, ApJ 789, 82</a> (arXiv:1312.1338). </p>
+
+<p>The RHT is a machine vision code that measures linear intensity as a function of orientation in images. The RHT was used to discover that diffuse neutral hydrogen features in the Milky Way are very well aligned with the interstellar magnetic field (<a href="http://adsabs.harvard.edu/cgi-bin/bib_query?arXiv:1312.1338">Clark, Peek, &amp; Putman 2014</a>, <a href="http://adsabs.harvard.edu/abs/2015PhRvL.115x1302C">Clark et al. 2015</a>).</p>
+
+<p>This code is written and maintained by <a href="http://user.astro.columbia.edu/%7Eseclark/">Susan E Clark</a>. Please feel free to get in touch with any questions, and please create pull requests to suggest improvements.</p>
+
+<p>Included is a modified RHT which distinguishes between pixels located at theta, and at theta+pi, in polar coordinates centered on any given image pixel. This is achieved by searching along radii with twice the dtheta of the diameters searched in the RHT. This Transform is still in development.</p>
+
+<h2>
+<a id="requirements-python-27-only" class="anchor" href="#requirements-python-27-only" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Requirements (Python 2.7 Only)</h2>
+
+<p>To run the RHT you'll need <a href="http://www.numpy.org/">numpy</a>, <a href="https://www.scipy.org/">scipy</a>, and <a href="http://www.astropy.org/">astropy</a> (for reading fits files). </p>
+
+<h2>
+<a id="instructions-for-use-interactive-python-environment" class="anchor" href="#instructions-for-use-interactive-python-environment" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Instructions For Use (interactive python environment)</h2>
+
+<ol>
+<li>
+<p>Ensure your Python 2.7 Environment is as up-to-date as possible and contains the required imports. The code has been tested on both Windows and Mac operating systems. </p>
+
+<p><code>python --version //Currently Supports 2.7.5</code></p>
+</li>
+<li>
+<p>Ensure you are able to import the package:</p>
+
+<p><code>import rht</code></p>
+</li>
+<li>
+<p>Run the RHT for individual files or directories, given a number of parameters. Output will be placed alongside the input files in the .fits format, with a record of the parameters that created it:</p>
+
+<p><code>rht.main()</code> Runs the RHT, after asking for user input, with default parameters</p>
+
+<p><code>rht.main('filepath')</code> Runs the RHT for a given image or within a given directory with default parameters</p>
+
+<p><code>rht.main('filepath', flag=value, param=value)</code> Runs with some flag set to a boolean and some param set to a number</p>
+</li>
+<li>
+<p>Explanation of <code>rht.main()</code> Flags and Parameters</p>
+
+<p><strong>Flags</strong>:<br>
+ <code>force=False</code>: If True, forcefully overwrites existing RHT data with same parameter values.<br>
+ <code>drht=False</code> : If True, runs the directional RHT, which returns output on a full, rather than half, polar domain.</p>
+
+<p><strong>Parameters</strong>:<br>
+ <code>wlen=55.0</code>  : Set window diameter in pixels.<br>
+ <code>smr=11.0</code>   : Set smoothing radius in pixels.<br>
+ <code>frac=0.70</code>  : Set theta power threshold. </p>
+</li>
+</ol>
+
+<h2>
+<a id="instructions-for-use-terminal" class="anchor" href="#instructions-for-use-terminal" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Instructions For Use (Terminal)</h2>
+
+<p>Command Line Argument Format:
+    <code>python rht.py filename.fits arg1 arg2 ... argn</code></p>
+
+<p>For a list of possible arguments, run<br>
+    <code>python rht.py --help</code></p>
+
+<p>Your first argument must be the .fits file to run the RHT on. After that you may assign any number of the following arguments:    </p>
+
+<p><strong>Flags</strong>: 
+  <code>'-f', '--force'</code> : Force overwrite RHT output run with same parameters.<br>
+  <code>'-d', '--drht'</code>  : Compute Directional RHT (full polar domain).</p>
+
+<p><strong>Params</strong>:<br>
+  <code>'-w', '--wlen' =value</code> : Sets window diameter<br>
+  <code>'-s', '--smr' =value</code> : Sets smoothing radius
+  <code>'-t', '--thresh' =value</code> : Sets theta power threshold</p>
+
+<h2>
+<a id="other-information" class="anchor" href="#other-information" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Other Information</h2>
+
+<p>Input: .fits file<br>
+Output: .fits file containing two HDUs:
+        [0] RHT backprojection, or an image of RHT intensity integrated over all thetas.<br>
+        <a href="i,%20j">1</a> coordinates in image space, and R(theta) for each image coordinate     </p>
+
+<p>The RHT is more expensive the larger your window length. </p>
+
+<h2>
+<a id="publications-that-use-the-rht" class="anchor" href="#publications-that-use-the-rht" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Publications that use the RHT</h2>
+
+<p>Please get in touch if you have a publication that you'd like to add to the list!</p>
+
+<ul>
+<li>Koch &amp; Rosolowsky 2015, <a href="http://adsabs.harvard.edu/abs/2015MNRAS.452.3435K">Filament identification through mathematical morphology</a><br>
+</li>
+<li>Malinen et al. 2016, <a href="http://adsabs.harvard.edu/abs/2016MNRAS.460.1934M">Matching dust emission structures and magnetic field in high-latitude cloud L1642: comparing Herschel and Planck maps</a><br>
+</li>
+<li>Panopoulou,Psaradaki, &amp; Tassis 2016, <a href="http://adsabs.harvard.edu/abs/2016MNRAS.462.1517P">The magnetic field and dust filaments in the Polaris Flare</a>
+</li>
+<li>Inoue &amp; Inutsuka 2016, <a href="http://adsabs.harvard.edu/abs/2016arXiv160802601I">Formation of HI Clouds in Shock-compressed Interstellar Medium: Physical Origin of Angular Correlation Between Filamentary Structure and Magnetic Field</a>
+</li>
+</ul>
+
+<h2>
+<a id="attribution" class="anchor" href="#attribution" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Attribution</h2>
+
+<p>If use of the RHT results in a publication, please cite <a href="http://adsabs.harvard.edu/cgi-bin/bib_query?arXiv:1312.1338">Clark, Peek, &amp; Putman 2014, ApJ 789, 82</a></p>
+
+      <footer class="site-footer">
+        <span class="site-footer-owner"><a href="https://github.com/seclark/RHT">RHT</a> is maintained by <a href="https://github.com/seclark">seclark</a>.</span>
+
+        <span class="site-footer-credits">This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the <a href="https://github.com/jasonlong/cayman-theme">Cayman theme</a> by <a href="https://twitter.com/jasonlong">Jason Long</a>.</span>
+      </footer>
+
+    </section>
+
+  
+  </body>
+</html>
