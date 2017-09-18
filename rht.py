@@ -416,7 +416,7 @@ def bad_pixels(data):
 
 def all_within_diameter_are_good(data, diameter):
     assert diameter%2
-    r = int(np.floor(diameter/2))
+    r = int(np.int(diameter/2))
 
     # Base case, 'assume all pixels are bad'
     mask = np.zeros_like(data)
@@ -596,7 +596,7 @@ def houghnew(image, cos_theta, sin_theta):
         # Assign the proper values to the out array
         out[:len(bincount), i] = bincount
 
-    return out[np.floor(nr_bins/2), :]
+    return out[np.int(nr_bins/2), :]
 
 
 def all_thetas(wlen, theta, original):
