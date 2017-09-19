@@ -1,3 +1,4 @@
+from __future__ import division, print_function
 from astropy.io import fits
 import numpy as np
 import math
@@ -9,7 +10,7 @@ def get_thets(wlen, save = True):
     """
 
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))
-    print 'ntheta is ', ntheta
+    print('ntheta is {}'.format(ntheta))
     dtheta = np.pi/ntheta
     
     #Thetas for binning   
@@ -30,7 +31,7 @@ def get_RHT_data(xyt_filename = "filename.fits"):
     """
         
     hdu_list = fits.open(xyt_filename, mode='readonly', memmap=True, save_backup=False, checksum=True) #Allows for reading in very large files!
-    print "loading data from ", xyt_filename
+    print("loading data from ", xyt_filename)
     header = hdu_list[0].header
     data = hdu_list[1].data
     ipoints = data['hi'] 
