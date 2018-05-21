@@ -3,14 +3,15 @@ from astropy.io import fits
 import numpy as np
 import math
 
-def get_thets(wlen, save = True):
+def get_thets(wlen, save = True, returnbins = False, verbose = False):
     """
     Determine the values of theta for RHT output. These are determined by the window length (wlen)
     by Equation 2 in Clark+ 2014.
     """
 
     ntheta = math.ceil((np.pi*np.sqrt(2)*((wlen-1)/2.0)))
-    print('ntheta is {}'.format(ntheta))
+    if verbose:
+        print('ntheta is {}'.format(ntheta))
     dtheta = np.pi/ntheta
     
     #Thetas for binning   
@@ -23,7 +24,10 @@ def get_thets(wlen, save = True):
     if save == True:
         np.save('thets_w'+str(wlen)+'.npy', thets)
     
-    return thets
+    if returnbins:
+        return thets, thetbins
+    else:
+        return thets
 
 def get_RHT_data(xyt_filename = "filename.fits"):
     """
