@@ -220,14 +220,14 @@ def xyt_name_factory(filepath, wlen, smr, frac, original):
             return os.path.normpath(os.path.join(dirname, xyt_filename))
     
     # Failure: No match and no available output slots
-    xyt_filename = string.replace(fnmatch_string, '?', '0')
+    xyt_filename = str.replace(fnmatch_string, '?', '0')
     print('In xyt_filename(): No existing ouput matches the input parameters and no namespace is available')
     print('Overwrite ' + xyt_filename + '?..') 
     choice = input(' [y]/n/'+'0'*(DIGITS-1)+'x')
     if len(choice) == 0 or choice == 'y':
         return os.path.normpath(os.path.join(dirname, xyt_filename))
     elif choice != 'n':
-        int_string = string.zfill(str(int(choice)), DIGITS)[:DIGITS] 
+        int_string = str.zfill(str(int(choice)), DIGITS)[:DIGITS] 
         xyt_filename = filename+ xyt_suffix+ int_string+ xyt_format
         return os.path.normpath(os.path.join(dirname, xyt_filename)) 
     else:
@@ -327,7 +327,7 @@ def getXYT(xyt_filename, match_only=False):
             data = np.load(xyt_filename, mmap_mode='r')
             if match_only:
                 try:
-                    return all([ match_only[x] == data[string.lower(x)] for x in list(match_only.keys()) ])
+                    return all([ match_only[x] == data[str.lower(x)] for x in list(match_only.keys()) ])
                 except KeyError:
                     return False
             Hi = data['hi']
@@ -339,7 +339,7 @@ def getXYT(xyt_filename, match_only=False):
             header = hdu_list[0].header
             if match_only:
                 try:
-                    return all([ match_only[x] == header[string.upper(x)] for x in list(match_only.keys()) ])
+                    return all([ match_only[x] == header[str.upper(x)] for x in list(match_only.keys()) ])
                 except KeyError:
                     return False
             data = hdu_list[1].data
