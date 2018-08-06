@@ -6,6 +6,7 @@
 #Imports
 #-----------------------------------------------------------------------------------------
 from __future__ import division #Must be first line of code in the file
+from __future__ import print_function
 from astropy.io import fits
 from argparse import ArgumentParser
 from argparse import ArgumentDefaultsHelpFormatter
@@ -107,7 +108,7 @@ def announcement(strings):
     return result
 
 def announce(strings):
-    print announcement(strings)
+    print(announcement(strings))
 
 def update_progress(progress, message='Progress:', final_message='Finished:'):
     # Create progress meter that looks like: 
@@ -167,7 +168,7 @@ def update_progress(progress, message='Progress:', final_message='Finished:'):
         sys.stdout.flush()
         start_time = None
         stop_time = None
-        print ''
+        print('')
 
 #-----------------------------------------------------------------------------------------
 # Naming Conventions and Converisons
@@ -215,8 +216,8 @@ def xyt_name_factory(filepath, wlen, smr, frac, original):
     
     # Failure: No match and no available output slots
     xyt_filename = string.replace(fnmatch_string, '?', '0')
-    print 'In xyt_filename(): No existing ouput matches the input parameters and no namespace is available'
-    print 'Overwrite ' + xyt_filename + '?..' 
+    print('In xyt_filename(): No existing ouput matches the input parameters and no namespace is available')
+    print('Overwrite ' + xyt_filename + '?..') 
     choice = raw_input(' [y]/n/'+'0'*(DIGITS-1)+'x')
     if len(choice) == 0 or choice == 'y':
         return os.path.normpath(os.path.join(dirname, xyt_filename))
@@ -355,7 +356,7 @@ def getXYT(xyt_filename, match_only=False):
             xyt = np.memmap(tempfile.TemporaryFile(), dtype=DTYPE, mode='w+', shape=(datay, datax, ntheta))
             xyt.fill(0.0)
         else:
-            print 'Warning: Reconstructing very large array in memory! Set BUFFER to True!' 
+            print('Warning: Reconstructing very large array in memory! Set BUFFER to True!')  
             xyt = np.zeros((datay, datax, ntheta))
         coords = zip(Hj, Hi)
         for c in range(len(coords)):
@@ -411,7 +412,7 @@ def bad_pixels(data):
         '''
     except:
         # IMPLEMENTATION3: Give up?
-        print 'Unable to properly mask data in bad_pixels()...'
+        print('Unable to properly mask data in bad_pixels()...')
         return data.astype(np.bool)
 
 def all_within_diameter_are_good(data, diameter):
@@ -480,10 +481,10 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
     except:
         # Failure Reading Data
         if make_mask:
-            print 'Failure in getData('+filepath+')... Returning None, None, None'
+            print('Failure in getData('+filepath+')... Returning None, None, None')
             return None, None, None
         else:
-            print 'Failure in getData('+filepath+')... Returning None'
+            print('Failure in getData('+filepath+')... Returning None')
             return None 
 
     if not make_mask:
@@ -666,7 +667,7 @@ def buffershape(ntheta, filesize=FILECAP):
     ntheta = int(ntheta)
     filesize = int(filesize)
     if not 0 < filesize <= FILECAP:
-        print 'Chosen buffer size exceeds existing limit. Reset to', str(FILECAP), 'Bytes'
+        print('Chosen buffer size exceeds existing limit. Reset to', str(FILECAP), 'Bytes')
         filesize = FILECAP
 
     bits_per_element_in_bits = np.dtype(DTYPE).itemsize
@@ -674,7 +675,7 @@ def buffershape(ntheta, filesize=FILECAP):
     elements_per_file_in_elements = int(bits_per_file_in_bits // bits_per_element_in_bits)
     length_in_elements = int(elements_per_file_in_elements // ntheta)
     if length_in_elements <= 0:
-        print 'In buffershape, ntheta has forced your buffer size to become larger than', filesize, 'Bytes'
+    	print('In buffershape, ntheta has forced your buffer size to become larger than', filesize, 'Bytes')
         length_in_elements = 1
 
     return (length_in_elements, ntheta) 
@@ -859,7 +860,7 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
                     os.remove(obj)
                 os.removedirs(temp_dir)
             except:
-                print 'Failed to delete temporary files:', path 
+                print('Failed to delete temporary files:', path) 
 
         shutil.rmtree(temp_dir, ignore_errors=False, onerror=rmtree_failue)
         return True
@@ -899,7 +900,7 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR)
 
     if not is_valid_file(filepath):
         # Check to see if a file should have the rht applied to it.
-        print 'Invalid filepath encountered in rht('+filepath+')...'
+        print('Invalid filepath encountered in rht('+filepath+')...')
         return False
 
     try:
@@ -911,17 +912,16 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR)
             # This can overridden by setting the 'force' flag.
             return True
 
-        print '1/4:: Retrieving Data from:', filepath
+        print('1/4:: Retrieving Data from:', filepath)
         data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
         datay, datax = data.shape
 
-        print '2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)+',', 'Standard (half-polar) RHT:', str(original)
-        
+        print('2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)+',', 'Standard (half-polar) RHT:', str(original))        
         message = '3/4:: Running RHT...'
 
         success = window_step(data=data, wlen=wlen, frac=frac, smr=smr, original=original, smr_mask=smr_mask, wlen_mask=wlen_mask, xyt_filename=xyt_filename, message=message) #TODO__________________
 
-        print '4/4:: Successfully Saved Data As', xyt_filename
+        print('4/4:: Successfully Saved Data As', xyt_filename)
         return success
     
     except:
@@ -950,7 +950,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     '''
 
 
-    print 'viewer() is currently in disrepair! Exiting to avoid unpleasant results!'
+    print('viewer() is currently in disrepair! Exiting to avoid unpleasant results!')
     return False 
 
     # Make sure relevant files are present.
@@ -1004,7 +1004,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
         plt.close()
 
     #---------------------------------------------------------------------- PLOT 1
-    print 'Plotting Whole Figure...'
+    print('Plotting Whole Figure...')
     fig, axes = plt.subplots(nrows=2, ncols=2)
     
     #### Log-scale plot of original image data
@@ -1034,7 +1034,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     cleanup()
 
     #---------------------------------------------------------------------- PLOT 2
-    print 'Backprojecting...'
+    print('Backprojecting...')
 
     #### Log-scale plot of original image data
     plt.subplot(121)
@@ -1065,7 +1065,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     '''
     #---------------------------------------------------------------------- PLOT 4
     #Polar plot of theta power
-    print 'Linearity'
+    print('Linearity')
     
     if original:
         modified_spectrum = np.true_divide(np.append(spectrum, spectrum), 2.0) 
@@ -1123,12 +1123,12 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
                 pathlist.append(obj_path)
     else:
         # Input is neither a file nor a directory.
-        print 'Invalid source encountered in main(); must be file or directory.'
+        print('Invalid source encountered in main(); must be file or directory.')
         return False
 
     pathlist = filter(is_valid_file, pathlist)
     if len(pathlist) == 0:
-        print 'Invalid source encountered in main(); no valid images found.'
+        print('Invalid source encountered in main(); no valid images found.')
         return False
 
     # Run RHT over all valid inputs. 
