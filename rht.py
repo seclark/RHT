@@ -6,6 +6,12 @@
 #Imports
 #-----------------------------------------------------------------------------------------
 from __future__ import division #Must be first line of code in the file
+from __future__ import print_function
+from builtins import filter
+from builtins import input
+from builtins import zip
+from builtins import str
+from builtins import range
 from astropy.io import fits
 from argparse import ArgumentParser
 from argparse import ArgumentDefaultsHelpFormatter
@@ -99,7 +105,7 @@ def announcement(strings):
     if type(strings) == list:
         strings.append('*'*TEXTWIDTH)
         strings.insert(0, '*'*TEXTWIDTH)
-        result = '\n'.join(string.center(str(s), TEXTWIDTH, ' ') for s in strings) 
+        result = '\n'.join(str.center(str(s), TEXTWIDTH, ' ') for s in strings) 
     elif type(strings) == str:
         result = announcement(strings.split('\n'))
     else:
@@ -107,7 +113,7 @@ def announcement(strings):
     return result
 
 def announce(strings):
-    print announcement(strings)
+    print(announcement(strings))
 
 def update_progress(progress, message='Progress:', final_message='Finished:'):
     # Create progress meter that looks like: 
@@ -147,7 +153,7 @@ def update_progress(progress, message='Progress:', final_message='Finished:'):
 
     length = int(0.55 * TEXTWIDTH)
     messlen = TEXTWIDTH-(length+3)-len(time_message)
-    message = string.ljust(message, messlen)[:messlen]
+    message = str.ljust(message, messlen)[:messlen]
 
     p = int(length*progress/1.0) 
     sys.stdout.write('\r{2} [{0}{1}]{3}'.format('#'*p, ' '*(length-p), message, time_message))
@@ -162,12 +168,12 @@ def update_progress(progress, message='Progress:', final_message='Finished:'):
             time_message = ' ' + str(total) + 'sec'
         
         final_offset = TEXTWIDTH-len(time_message)
-        final_message = string.ljust(final_message, final_offset)[:final_offset]
+        final_message = str.ljust(final_message, final_offset)[:final_offset]
         sys.stdout.write('\r{0}{1}'.format(final_message, time_message))
         sys.stdout.flush()
         start_time = None
         stop_time = None
-        print ''
+        print('')
 
 #-----------------------------------------------------------------------------------------
 # Naming Conventions and Converisons
@@ -195,7 +201,7 @@ def xyt_name_factory(filepath, wlen, smr, frac, original):
     xyt_array = [None]*(10**DIGITS) 
 
     # Try to find a parameter match among existing files
-    left = string.find(fnmatch_string, '?')
+    left = str.find(fnmatch_string, '?')
     for x in xyt_files:
         abs_x = os.path.join(dirname, x)
 
@@ -209,19 +215,19 @@ def xyt_name_factory(filepath, wlen, smr, frac, original):
     for i, y in enumerate(xyt_array):
         if y is None:
             # Print 'Found _xyt available for these parameters!'
-            int_string = string.zfill(str(i), DIGITS)[:DIGITS] 
+            int_string = str.zfill(str(i), DIGITS)[:DIGITS] 
             xyt_filename = filename+ xyt_suffix+ int_string+ xyt_format
             return os.path.normpath(os.path.join(dirname, xyt_filename))
     
     # Failure: No match and no available output slots
-    xyt_filename = string.replace(fnmatch_string, '?', '0')
-    print 'In xyt_filename(): No existing ouput matches the input parameters and no namespace is available'
-    print 'Overwrite ' + xyt_filename + '?..' 
-    choice = raw_input(' [y]/n/'+'0'*(DIGITS-1)+'x')
+    xyt_filename = str.replace(fnmatch_string, '?', '0')
+    print('In xyt_filename(): No existing ouput matches the input parameters and no namespace is available')
+    print('Overwrite ' + xyt_filename + '?..') 
+    choice = input(' [y]/n/'+'0'*(DIGITS-1)+'x')
     if len(choice) == 0 or choice == 'y':
         return os.path.normpath(os.path.join(dirname, xyt_filename))
     elif choice != 'n':
-        int_string = string.zfill(str(int(choice)), DIGITS)[:DIGITS] 
+        int_string = str.zfill(str(int(choice)), DIGITS)[:DIGITS] 
         xyt_filename = filename+ xyt_suffix+ int_string+ xyt_format
         return os.path.normpath(os.path.join(dirname, xyt_filename)) 
     else:
@@ -321,7 +327,7 @@ def getXYT(xyt_filename, match_only=False):
             data = np.load(xyt_filename, mmap_mode='r')
             if match_only:
                 try:
-                    return all([ match_only[x] == data[string.lower(x)] for x in match_only.keys() ])
+                    return all([ match_only[x] == data[str.lower(x)] for x in list(match_only.keys()) ])
                 except KeyError:
                     return False
             Hi = data['hi']
@@ -333,7 +339,7 @@ def getXYT(xyt_filename, match_only=False):
             header = hdu_list[0].header
             if match_only:
                 try:
-                    return all([ match_only[x] == header[string.upper(x)] for x in match_only.keys() ])
+                    return all([ match_only[x] == header[str.upper(x)] for x in list(match_only.keys()) ])
                 except KeyError:
                     return False
             data = hdu_list[1].data
@@ -355,9 +361,9 @@ def getXYT(xyt_filename, match_only=False):
             xyt = np.memmap(tempfile.TemporaryFile(), dtype=DTYPE, mode='w+', shape=(datay, datax, ntheta))
             xyt.fill(0.0)
         else:
-            print 'Warning: Reconstructing very large array in memory! Set BUFFER to True!' 
+            print('Warning: Reconstructing very large array in memory! Set BUFFER to True!')  
             xyt = np.zeros((datay, datax, ntheta))
-        coords = zip(Hj, Hi)
+        coords = list(zip(Hj, Hi))
         for c in range(len(coords)):
             j,i = coords[c]
             xyt[j,i,:] = Hthets[c]
@@ -411,7 +417,7 @@ def bad_pixels(data):
         '''
     except:
         # IMPLEMENTATION3: Give up?
-        print 'Unable to properly mask data in bad_pixels()...'
+        print('Unable to properly mask data in bad_pixels()...')
         return data.astype(np.bool)
 
 def all_within_diameter_are_good(data, diameter):
@@ -433,7 +439,7 @@ def all_within_diameter_are_good(data, diameter):
 
     # IMPLEMENTATION1: Zero any mask pixel within r of a bad pixel
     update_progress(0.0)
-    coords = zip(*np.nonzero(bad_pixels(data)))
+    coords = list(zip(*np.nonzero(bad_pixels(data))))
     N = len(coords)
     for c in range(N):    
         j,i = coords[c]
@@ -480,10 +486,10 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
     except:
         # Failure Reading Data
         if make_mask:
-            print 'Failure in getData('+filepath+')... Returning None, None, None'
+            print('Failure in getData('+filepath+')... Returning None, None, None')
             return None, None, None
         else:
-            print 'Failure in getData('+filepath+')... Returning None'
+            print('Failure in getData('+filepath+')... Returning None')
             return None 
 
     if not make_mask:
@@ -618,7 +624,7 @@ def all_thetas(wlen, theta, original):
     
     #outshape = (wlen, wlen, ntheta)
     out = np.zeros(window.shape+(ntheta,), np.int)
-    coords = zip( *np.nonzero(window))
+    coords = list(zip( *np.nonzero(window)))
     for (j, i) in coords:
         # At each x/y value, create new single-pixel data.
         w_1 = np.zeros_like(window)
@@ -666,7 +672,7 @@ def buffershape(ntheta, filesize=FILECAP):
     ntheta = int(ntheta)
     filesize = int(filesize)
     if not 0 < filesize <= FILECAP:
-        print 'Chosen buffer size exceeds existing limit. Reset to', str(FILECAP), 'Bytes'
+        print('Chosen buffer size exceeds existing limit. Reset to', str(FILECAP), 'Bytes')
         filesize = FILECAP
 
     bits_per_element_in_bits = np.dtype(DTYPE).itemsize
@@ -674,7 +680,7 @@ def buffershape(ntheta, filesize=FILECAP):
     elements_per_file_in_elements = int(bits_per_file_in_bits // bits_per_element_in_bits)
     length_in_elements = int(elements_per_file_in_elements // ntheta)
     if length_in_elements <= 0:
-        print 'In buffershape, ntheta has forced your buffer size to become larger than', filesize, 'Bytes'
+        print('In buffershape, ntheta has forced your buffer size to become larger than', filesize, 'Bytes')
         length_in_elements = 1
 
     return (length_in_elements, ntheta) 
@@ -792,7 +798,7 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
 
     # Number of RHT operations that will be performed, and their coordinates
     update_progress(0.0)
-    coords = zip( *np.nonzero( wlen_mask))
+    coords = list(zip( *np.nonzero( wlen_mask)))
     N = len(coords)
     for c in range(N):
         j,i = coords[c]
@@ -859,7 +865,7 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
                     os.remove(obj)
                 os.removedirs(temp_dir)
             except:
-                print 'Failed to delete temporary files:', path 
+                print('Failed to delete temporary files:', path) 
 
         shutil.rmtree(temp_dir, ignore_errors=False, onerror=rmtree_failue)
         return True
@@ -899,7 +905,7 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR)
 
     if not is_valid_file(filepath):
         # Check to see if a file should have the rht applied to it.
-        print 'Invalid filepath encountered in rht('+filepath+')...'
+        print('Invalid filepath encountered in rht('+filepath+')...')
         return False
 
     try:
@@ -911,17 +917,16 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR)
             # This can overridden by setting the 'force' flag.
             return True
 
-        print '1/4:: Retrieving Data from:', filepath
+        print('1/4:: Retrieving Data from:', filepath)
         data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
         datay, datax = data.shape
 
-        print '2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)+',', 'Standard (half-polar) RHT:', str(original)
-        
+        print('2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)+',', 'Standard (half-polar) RHT:', str(original))        
         message = '3/4:: Running RHT...'
 
         success = window_step(data=data, wlen=wlen, frac=frac, smr=smr, original=original, smr_mask=smr_mask, wlen_mask=wlen_mask, xyt_filename=xyt_filename, message=message) #TODO__________________
 
-        print '4/4:: Successfully Saved Data As', xyt_filename
+        print('4/4:: Successfully Saved Data As', xyt_filename)
         return success
     
     except:
@@ -950,7 +955,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     '''
 
 
-    print 'viewer() is currently in disrepair! Exiting to avoid unpleasant results!'
+    print('viewer() is currently in disrepair! Exiting to avoid unpleasant results!')
     return False 
 
     # Make sure relevant files are present.
@@ -987,7 +992,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     U = np.zeros_like(hi)
     V = np.zeros_like(hj)
     C = np.zeros((len(U)), dtype=np.float)
-    coords = zip(hi, hj)
+    coords = list(zip(hi, hj))
     for c in range(len(coords)):
         C[c], U[c], V[c] = theta_rht(hthets[c], original, uv=True)
     C *= np.isfinite(C)
@@ -1004,7 +1009,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
         plt.close()
 
     #---------------------------------------------------------------------- PLOT 1
-    print 'Plotting Whole Figure...'
+    print('Plotting Whole Figure...')
     fig, axes = plt.subplots(nrows=2, ncols=2)
     
     #### Log-scale plot of original image data
@@ -1034,7 +1039,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     cleanup()
 
     #---------------------------------------------------------------------- PLOT 2
-    print 'Backprojecting...'
+    print('Backprojecting...')
 
     #### Log-scale plot of original image data
     plt.subplot(121)
@@ -1065,7 +1070,7 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
     '''
     #---------------------------------------------------------------------- PLOT 4
     #Polar plot of theta power
-    print 'Linearity'
+    print('Linearity')
     
     if original:
         modified_spectrum = np.true_divide(np.append(spectrum, spectrum), 2.0) 
@@ -1106,7 +1111,7 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
     # Ensure that the input is a non-None, non-Empty string
     while source is None or type(source) != str or len(source)==0:
         try:
-            source = raw_input('Source:')
+            source = input('Source:')
         except:
             source = None
     
@@ -1123,12 +1128,12 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
                 pathlist.append(obj_path)
     else:
         # Input is neither a file nor a directory.
-        print 'Invalid source encountered in main(); must be file or directory.'
+        print('Invalid source encountered in main(); must be file or directory.')
         return False
 
-    pathlist = filter(is_valid_file, pathlist)
-    if len(pathlist) == 0:
-        print 'Invalid source encountered in main(); no valid images found.'
+    pathlist = list(filter(is_valid_file, pathlist))
+    if len(list(pathlist)) == 0:
+        print('Invalid source encountered in main(); no valid images found.')
         return False
 
     # Run RHT over all valid inputs. 
