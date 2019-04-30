@@ -7,12 +7,9 @@
 #-----------------------------------------------------------------------------------------
 from __future__ import division #Must be first line of code in the file
 from __future__ import print_function
-from builtins import filter
-from builtins import input
-from builtins import zip
-from builtins import str
-from builtins import range
+from builtins import filter, input, zip, range
 from astropy.io import fits
+import argparse
 from argparse import ArgumentParser
 from argparse import ArgumentDefaultsHelpFormatter
 
@@ -1101,7 +1098,7 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
 
     return: Boolean, if the function succeeded
     '''
-    
+
     # Setting 'drht' to True means that the internal parameter 'original' is False.
     if drht == True:
         original = False
