@@ -7,12 +7,9 @@
 #-----------------------------------------------------------------------------------------
 from __future__ import division #Must be first line of code in the file
 from __future__ import print_function
-from builtins import filter
-from builtins import input
-from builtins import zip
-from builtins import str
-from builtins import range
+from builtins import filter, input, zip, range
 from astropy.io import fits
+import argparse
 from argparse import ArgumentParser
 from argparse import ArgumentDefaultsHelpFormatter
 
@@ -295,11 +292,43 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, original, backproj=Non
 
         # Other Header Values
         prihdr['NTHETA'] = ntheta
-
+        
+        """
+        Adding RA, DEC and other possible header values to your new header
+        
+        First, the input filename is extracted by cutting away _xyt and the numbers until
+        the period before .fits. That means that this will not work if you have '_xyt' or a
+        period elsewhere in your filename. But you really shouldn't do that. 
+        
+        The header is then extracted from the old file, and you can overwrite your
+        desired header information by adding/removing the keywords below. 
+        """
+        
+        ini = xyt_filename.find(xyt_suffix)
+        fin = xyt_filename.find('.')
+        
+        # Returns filename of input
+        xyt_filename_fixed = xyt_filename[:ini] + xyt_filename[fin:]
+        
+        my_header = fits.getheader(str(xyt_filename_fixed))
+        
+        # If you do not want header keywords from your old header, make this an empty list.
+        # If you do, just input them as strings: ['CTYPE1', 'CRVAL1'] etc.
+        header_keywords = []
+        
+        if len(header_keywords) > 0:
+            for keyword in header_keywords:
+                
+                if keyword not in my_header:
+                    print("Provided header keyword not in your old header. Please adjust variable header_keywords in function putXYT. Exiting...")
+                    sys.exit()
+                
+                prihdr[keyword] = my_header[keyword]
+            
         # Whole FITS File
         prihdu = fits.PrimaryHDU(data=backproj, header=prihdr)
         thdulist = fits.HDUList([prihdu, tbhdu])
-        thdulist.writeto(xyt_filename, output_verify='silentfix', clobber=True, checksum=True)
+        thdulist.writeto(xyt_filename, output_verify='silentfix', overwrite=True, checksum=True)
 
         #TODO__________________Compress Fits Files After Saving
 
@@ -1101,7 +1130,7 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
 
     return: Boolean, if the function succeeded
     '''
-    
+
     # Setting 'drht' to True means that the internal parameter 'original' is False.
     if drht == True:
         original = False
@@ -1197,7 +1226,7 @@ if __name__ == "__main__":
     for f in args.files: # loop over input files
         main(source=f, force=args.force, wlen=args.wlen,
             frac=args.thresh, smr=args.smr, drht=args.drht)
-    exit()
+    sys.exit()
 
 #-----------------------------------------------------------------------------------------
 #Attribution
