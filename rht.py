@@ -310,8 +310,7 @@ def putXYT(filepath, xyt_filename, hi, hj, hthets, wlen, smr, frac, original, ba
         
         # If you do not want header keywords from your old header, make this an empty list.
         # If you do, just input them as strings: ['CTYPE1', 'CRVAL1'] etc.
-        header_keywords = ['CTYPE1', 'CRVAL1', 'CDELT1', 'CRPIX1', 'CUNIT1', 'CTYPE2',
-                           'CRVAL2', 'CDELT2', 'CRPIX2', 'CUNIT2']
+        header_keywords = []
         
         if len(header_keywords) > 0:
             for keyword in header_keywords:
@@ -900,7 +899,7 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
 # Interactive Functions
 #-----------------------------------------------------------------------------------------
 
-def rht(filepath, force=True, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR):
+def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR):
 
     '''
     filepath: String path to source data, which will have the Rolling Hough Transform applied
@@ -959,7 +958,7 @@ def rht(filepath, force=True, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR):
         raise #__________________________________________________________________________________________________________ Raise
         return False
 
-def interpret(filepath, force=True, wlen=WLEN, frac=FRAC, smr=SMR, original=ORIGINAL):
+def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORIGINAL):
 
     '''
     filepath: String path to source data, which will have the Rolling Hough Transform applied
@@ -1114,7 +1113,7 @@ def interpret(filepath, force=True, wlen=WLEN, frac=FRAC, smr=SMR, original=ORIG
 
 
 
-def main(source=None, display=False, force=True, drht=False, wlen=WLEN, frac=FRAC, smr=SMR):
+def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FRAC, smr=SMR):
 
     '''
     source: A filename, or the name of a directory containing files to transform
