@@ -53,7 +53,7 @@ README = 'README'
 
 # Output Formatting
 # Directory for RHT output
-OUTPUT = '.' 
+OUTPUT = '.'
 
 # Output format is standard fits. In the future we may support saved numpy arrays.
 xyt_format = '.fits'
@@ -180,7 +180,6 @@ def filename_from_path(filepath):
     # Maintains all characters in path except for those after and including the last period
     return os.path.basename('.'.join( filepath.split('.')[ 0:filepath.count('.') ] ) ) 
 
-
 def xyt_name_factory(filepath, wlen, smr, frac, original):
     # Returns the filename that _xyt output should have.
     # Will have the general behavior: filename_xyt00.format
@@ -192,7 +191,11 @@ def xyt_name_factory(filepath, wlen, smr, frac, original):
     # Remove RHT-specific endings
     filename = filename_from_path(filepath)
     
-    dirname = os.path.dirname(os.path.abspath(filepath))
+    if OUTPUT == '.':
+        dirname = os.path.dirname(os.path.abspath(filepath))
+    else:
+        dirname = OUTPUT
+    
     fnmatch_string = filename + xyt_suffix + '?'*DIGITS + xyt_format 
     xyt_files = fnmatch.filter(os.listdir(dirname), fnmatch_string) 
     xyt_array = [None]*(10**DIGITS) 
@@ -258,7 +261,7 @@ def ntheta_w(w=WLEN):
     return int(math.ceil( np.pi*(w-1)/np.sqrt(2.0) ))  
 
 # Saves the data into the given xyt_filename, depending upon filetype. Supports .fits and .npz currently
-def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, original, backproj=None, compressed=True):
+def putXYT(filepath, xyt_filename, hi, hj, hthets, wlen, smr, frac, original, backproj=None, compressed=True):
 
     if xyt_filename.endswith('.npz'):
         # IMPLEMENTATION1: Zipped Numpy arrays of Data #TODO _______________________________________ALWAYS BE CAREFUL WITH HEADER VARS
@@ -296,21 +299,14 @@ def putXYT(xyt_filename, hi, hj, hthets, wlen, smr, frac, original, backproj=Non
         """
         Adding RA, DEC and other possible header values to your new header
         
-        First, the input filename is extracted by cutting away _xyt and the numbers until
-        the period before .fits. That means that this will not work if you have '_xyt' or a
-        period elsewhere in your filename. But you really shouldn't do that. 
+        First, the old header is loaded in from filepath.
         
-        The header is then extracted from the old file, and you can overwrite your
-        desired header information by adding/removing the keywords below. 
+        You can then overwrite your desired header information by 
+        adding/removing the keywords below. 
         """
         
-        ini = xyt_filename.find(xyt_suffix)
-        fin = xyt_filename.find('.')
-        
-        # Returns filename of input
-        xyt_filename_fixed = xyt_filename[:ini] + xyt_filename[fin:]
-        
-        my_header = fits.getheader(str(xyt_filename_fixed))
+        # Old header
+        my_header = fits.getheader(filepath)
         
         # If you do not want header keywords from your old header, make this an empty list.
         # If you do, just input them as strings: ['CTYPE1', 'CRVAL1'] etc.
@@ -765,7 +761,7 @@ def concat_along_axis_0(memmap_list):
 
         return reduce(append_memmaps, others, initializer=seed)
 
-def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filename, message): 
+def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filename, message, filepath): 
 
     assert frac == float(frac) 
     assert 0 <= frac <= 1
@@ -864,7 +860,7 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
 
     if not BUFFER:
         # Save data
-        putXYT(xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets), wlen, smr, frac, original=original, backproj=np.divide(backproj, np.amax(backproj)) ) 
+        putXYT(filepath, xyt_filename, np.array(Hi), np.array(Hj), np.array(Hthets), wlen, smr, frac, original=original, backproj=np.divide(backproj, np.amax(backproj)) ) 
         return True 
 
     else:
@@ -880,7 +876,7 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
         # Combine memmap objects sequentially
         converted_hthets = concat_along_axis_0(temp_files)
         converted_hthets.flush()
-        putXYT(xyt_filename, np.array(Hi), np.array(Hj), converted_hthets, wlen, smr, frac, original=original, backproj=np.divide(backproj, np.amax(backproj)) ) #Saves data
+        putXYT(filepath, xyt_filename, np.array(Hi), np.array(Hj), converted_hthets, wlen, smr, frac, original=original, backproj=np.divide(backproj, np.amax(backproj)) ) #Saves data
         del converted_hthets
         
         def rmtree_failue(function, path, excinfo):
@@ -953,7 +949,7 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR)
         print('2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)+',', 'Standard (half-polar) RHT:', str(original))        
         message = '3/4:: Running RHT...'
 
-        success = window_step(data=data, wlen=wlen, frac=frac, smr=smr, original=original, smr_mask=smr_mask, wlen_mask=wlen_mask, xyt_filename=xyt_filename, message=message) #TODO__________________
+        success = window_step(data=data, wlen=wlen, frac=frac, smr=smr, original=original, smr_mask=smr_mask, wlen_mask=wlen_mask, xyt_filename=xyt_filename, message=message, filepath = filepath) #TODO__________________
 
         print('4/4:: Successfully Saved Data As', xyt_filename)
         return success
