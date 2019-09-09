@@ -54,7 +54,7 @@ README = 'README'
 # Output Formatting
 # Directory for RHT output
 OUTPUT = '.'
-if(~ os.path.isdir(OUTPUT)):
+if not os.path.isdir(OUTPUT):
     os.mkdir(OUTPUT)
 
 # Output format is standard fits. In the future we may support saved numpy arrays.
