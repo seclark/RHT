@@ -485,10 +485,8 @@ def all_within_diameter_are_good(data, diameter):
     '''
     return mask 
 
-def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
-    # Reads in and makes proper masks for images from various sources
-    # smr_mask masks any pixel within smr of any bad pixels, and the edge
-    # wlen_mask masks any pixel within wlen of any bad pixels, and the edge
+def getData(filepath):
+    # Reads in data for images from various sources
     # Supports .fits, .npy, and PIL formats
     
     try:
@@ -510,22 +508,22 @@ def getData(filepath, make_mask=False, smr=SMR, wlen=WLEN):
 
     except:
         # Failure Reading Data
-        if make_mask:
-            print('Failure in getData('+filepath+')... Returning None, None, None')
-            return None, None, None
-        else:
-            print('Failure in getData('+filepath+')... Returning None')
-            return None 
+        print('Failure in getData({})... Returning'.format(filepath))
+        return None
 
-    if not make_mask:
-        # Done Reading Data, No Mask Needed
-        return data
-    else:
-        # Mask Needed, cuts away smr radius from bads, then wlen from bads 
-        smr_mask = all_within_diameter_are_good(data, 2*smr+1)
-        nans = np.empty(data.shape, dtype=np.float).fill(np.nan)
-        wlen_mask = all_within_diameter_are_good( np.where(smr_mask, data, nans), wlen)
-        return data, smr_mask, wlen_mask
+    return data
+
+def getMask(data, smr=SMR, wlen=WLEN):
+    # Makes proper masks for images from data
+    # smr_mask masks any pixel within smr of any bad pixels, and the edge
+    # wlen_mask masks any pixel within wlen of any bad pixels, and the edge
+    
+    # Cuts away smr radius from bads, then wlen from bads 
+    smr_mask = all_within_diameter_are_good(data, 2*smr+1)
+    nans = np.empty(data.shape, dtype=np.float).fill(np.nan)
+    wlen_mask = all_within_diameter_are_good( np.where(smr_mask, data, 
+        nans), wlen)
+    return smr_mask, wlen_mask
 
 # Performs a circle-cut of given diameter on inkernel.
 # Outkernel is 0 anywhere outside the window.   
@@ -761,7 +759,8 @@ def concat_along_axis_0(memmap_list):
 
         return reduce(append_memmaps, others, initializer=seed)
 
-def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filename, message, filepath): 
+def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, 
+        xyt_filename, message, filepath): 
 
     assert frac == float(frac) 
     assert 0 <= frac <= 1
@@ -780,10 +779,12 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
     ntheta = ntheta_w(wlen)
     
     if original:
-        theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, retstep=True)        
+        theta, dtheta = np.linspace(0.0, np.pi, ntheta, endpoint=False, 
+                retstep=True)        
     else:
         # For the dRHT, we maintain ntheta by doubling dtheta.
-        theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, retstep=True)
+        theta, dtheta = np.linspace(0.0, 2*np.pi, ntheta, endpoint=False, 
+                retstep=True)
 
     # Cylinder of all lit pixels along a theta value
     xyt = all_thetas(wlen=wlen, theta=theta, original=original) 
@@ -899,24 +900,34 @@ def window_step(data, wlen, frac, smr, original, smr_mask, wlen_mask, xyt_filena
 # Interactive Functions
 #-----------------------------------------------------------------------------------------
 
-def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR):
+def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, 
+        smr=SMR, data=None):
+    """
+    filepath: String path to source data, which will have the Rolling Hough
+        Transform applied - if data is input (see below) then filepath is not
+        read but is just used to construct the name of the output filename
 
-    '''
-    filepath: String path to source data, which will have the Rolling Hough Transform applied
+    force: Boolean indicating if rht() should still be run, even when output
+        exists for these inputs
 
-    force: Boolean indicating if rht() should still be run, even when output exists for these inputs
     original: Boolean if one should use the original Rolling Hough Transform
 
     wlen: Diameter of a 'window' to be evaluated at one time
-    frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
+
+    frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit
+        up' to be counted
+
     smr: Integer radius of gaussian smoothing kernel to be applied to an data
+
+    data: Input data array (image) - alternative to giving filepath as source
+        of the data
     
     Saves:
         X-Y-Theta Power Arrays
         Backprojection
 
     return: Boolean, if the function succeeded
-    '''
+    """
 
     assert frac == float(frac) 
     assert 0 <= frac <= 1 
@@ -935,21 +946,30 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC, smr=SMR)
 
     try:
 
-        xyt_filename = xyt_name_factory(filepath, wlen=wlen, smr=smr, frac=frac, original=original)
+        xyt_filename = xyt_name_factory(filepath, wlen=wlen, smr=smr, 
+                frac=frac, original=original)
         
         if (not force) and os.path.isfile(xyt_filename):
-            # If the program recognizes that the RHT has already been completed, it will not rerun.
-            # This can overridden by setting the 'force' flag.
+            # If the program recognizes that the RHT has already been
+            # completed, it will not rerun.  This can overridden by setting
+            # the 'force' flag.
             return True
 
         print('1/4:: Retrieving Data from:', filepath)
-        data, smr_mask, wlen_mask = getData(filepath, make_mask=True, smr=smr, wlen=wlen)
+        if data is None:
+            data = getData(filepath)
+        smr_mask, wlen_mask = getMask(data, smr=smr, wlen=wlen)
         datay, datax = data.shape
 
-        print('2/4::', 'Size:', str(datax)+'x'+str(datay)+',', 'Wlen:', str(wlen)+',', 'Smr:', str(smr)+',', 'Frac:', str(frac)+',', 'Standard (half-polar) RHT:', str(original))        
+        print('2/4:: Size: {} x {}, Wlen: {}, Smr: {}, Frac: {},'.format(
+                datax,datay,wlen,smr,frac), 
+                'Standard (half-polar) RHT:'.format(original))        
         message = '3/4:: Running RHT...'
 
-        success = window_step(data=data, wlen=wlen, frac=frac, smr=smr, original=original, smr_mask=smr_mask, wlen_mask=wlen_mask, xyt_filename=xyt_filename, message=message, filepath = filepath) #TODO__________________
+        success = window_step(data=data, wlen=wlen, frac=frac, smr=smr, 
+                original=original, smr_mask=smr_mask, wlen_mask=wlen_mask, 
+                xyt_filename=xyt_filename, message=message, 
+                filepath = filepath)
 
         print('4/4:: Successfully Saved Data As', xyt_filename)
         return success
@@ -1113,19 +1133,26 @@ def interpret(filepath, force=False, wlen=WLEN, frac=FRAC, smr=SMR, original=ORI
 
 
 
-def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FRAC, smr=SMR):
-
-    '''
+def main(source=None, display=False, force=False, drht=False, wlen=WLEN, 
+        frac=FRAC, smr=SMR, data=None):
+    """
     source: A filename, or the name of a directory containing files to transform
-    display: Boolean flag determining if the input is to be interpreted and displayed
-    force: Boolean flag determining if rht() will be run, when output already exists
+
+    display: Boolean flag determining if the input is to be interpreted and
+        displayed
+    
+    force: Boolean flag determining if rht() will be run, when output already
+        exists
 
     wlen: Diameter of a 'window' to be evaluated at one time
-    frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit up' to be counted
+    
+    frac: Fraction in [0.0, 1.0] of pixels along one angle that must be 'lit
+        up' to be counted
+    
     smr: Integer radius of gaussian smoothing kernel to be applied to an data
 
     return: Boolean, if the function succeeded
-    '''
+    """
 
     # Setting 'drht' to True means that the internal parameter 'original' is False.
     if drht == True:
@@ -1170,11 +1197,11 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
         success = True
         try:
             if (display):
-
-                success = viewer(path, force=force, original=original, wlen=wlen, frac=frac, smr=smr)
+                success = viewer(path, force=force, original=original, 
+                        wlen=wlen, frac=frac, smr=smr)
             else:
-                success = rht(path, force=force, original=original, wlen=wlen, frac=frac, smr=smr)
-
+                success = rht(path, force=force, original=original, wlen=wlen,
+                        frac=frac, smr=smr, data=data)
         except:
             success = False
             if DEBUG:
@@ -1188,15 +1215,15 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN, frac=FR
     announce(summary)
     return True
 
-#-----------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # Initialization 3 of 3: Precomputed Objects
-#-----------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 
         
-#-----------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # Command Line Mode
-#-----------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Run Rolling Hough Transform on 1+ FITS files",
@@ -1224,10 +1251,11 @@ if __name__ == "__main__":
             frac=args.thresh, smr=args.smr, drht=args.drht)
     sys.exit()
 
-#-----------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 #Attribution
-#-----------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
-# This is the Rolling Hough Transform, described in Clark, Peek, & Putman 2014, ApJ 789, 82 (arXiv:1312.1338).
-# If use of the RHT leads to a publication, please cite the above.
-# Modifications to the RHT have been made by Lowell Schudel, les2185@columbia.edu, CC'16.
+# This is the Rolling Hough Transform, described in Clark, Peek, & Putman
+# 2014, ApJ 789, 82 (arXiv:1312.1338).  If use of the RHT leads to a
+# publication, please cite the above.  Modifications to the RHT have been made
+# by Lowell Schudel, les2185@columbia.edu, CC'16.
