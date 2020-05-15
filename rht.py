@@ -955,9 +955,12 @@ def rht(filepath, force=False, original=ORIGINAL, wlen=WLEN, frac=FRAC,
             # the 'force' flag.
             return True
 
-        print('1/4:: Retrieving Data from:', filepath)
+
         if data is None:
+            print('1/4:: Retrieving Data from:', filepath)
             data = getData(filepath)
+        else:
+            print('1/4:: Getting Mask for Data')
         smr_mask, wlen_mask = getMask(data, smr=smr, wlen=wlen)
         datay, datax = data.shape
 
