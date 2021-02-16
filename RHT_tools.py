@@ -19,7 +19,7 @@ def get_thets(wlen, save = True, returnbins = False, verbose = False):
     thetbins = thetbins - dtheta/2
     
     # thets for plotting
-    thets = np.arange(0, np.pi, dtheta)
+    thets = np.linspace(0.0, np.pi, ntheta, endpoint=False)
     
     if save == True:
         np.save('thets_w'+str(wlen)+'.npy', thets)
