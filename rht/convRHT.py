@@ -1,5 +1,5 @@
 import numpy as np
-import rht
+from rht import rht
 import h5py
 import time
 from astropy.io import fits
