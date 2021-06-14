@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #FAST ROLLING HOUGH TRANSFORM
 #Susan Clark, Lowell Schudel
 
@@ -1229,8 +1229,7 @@ def main(source=None, display=False, force=False, drht=False, wlen=WLEN,
 #------------------------------------------------------------------------------
 # Command Line Mode
 #------------------------------------------------------------------------------
-
-if __name__ == "__main__":
+def cli():
     parser = ArgumentParser(description="Run Rolling Hough Transform on 1+ FITS files",
         usage='%(prog)s [options] file(s)',
         formatter_class=ArgumentDefaultsHelpFormatter)
@@ -1255,6 +1254,9 @@ if __name__ == "__main__":
         main(source=f, force=args.force, wlen=args.wlen,
             frac=args.thresh, smr=args.smr, drht=args.drht)
     sys.exit()
+
+if __name__ == "__main__":
+    cli()
 
 #------------------------------------------------------------------------------
 #Attribution
