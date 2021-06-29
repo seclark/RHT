@@ -5,14 +5,38 @@ import time
 from astropy.io import fits
 import scipy.ndimage as ndimage
 
-def unsharp_mask(data, smr=2):
+def unsharp_mask(data, smr=2, rms_cutoff=None):
     umask_data_bool = rht.umask(data, smr)
+    if type(rms_cutoff) in (float, int):
+        ## If rms_cutoff is float or integer
+        ## Set it as constant cutoff level throughout the entire map
+        mask_im = (data >= rms_cutoff)
+        umask_data_bool = np.logical_and(umask_data_bool, mask_im)
+    elif type(rms_cutoff) in (str, np.ndarray):
+        if type(rms_cutoff) == str:
+            ## If rms_cutoff is a string (presumably path to .FITS file)
+            ## Read in the .FITS file using astropy, use as map of cutoff level
+            rms_map = fits.getdata(rms_cutoff)
+        else:
+            ## If rms_cutoff is a numpy.ndarray
+            ## Use as map of cutoff level directly
+            rms_map = rms_cutoff
+        if rms_map.shape != data.shape:
+            ## Shape of cutoff level map is not the same as data map
+            raise RuntimeError('shape of rms_cutoff map does not match that of data map')
+        mask_im = (data >= rms_map)
+        umask_data_bool = np.logical_and(umask_data_bool, mask_im)
+    elif rms_cutoff == None:
+        pass
+    else:
+        ## Unsupported data type --> TypeError
+        raise TypeError('rms_cutoff must be \'None\', float, int, str, or numpy.ndarray')
     umask_data = np.zeros(umask_data_bool.shape)
     umask_data[umask_data_bool] = 1. # instead of bitmask
     
     return umask_data
     
-def convRHT(datafn, wlen=11, smr=2, thresh=0.7, outroot="", outname="name", verbose=False):
+def convRHT(datafn, wlen=11, smr=2, thresh=0.7, outroot="", outname="name", verbose=False, rms_cutoff=None):
     """
     Convolution-based implementation of the RHT
     Utilizes the 'xyt' array from the original code: 
@@ -23,8 +47,21 @@ def convRHT(datafn, wlen=11, smr=2, thresh=0.7, outroot="", outname="name", verb
     Output now written to an hdf5 file rather than FITS.
     """
     
-    data = fits.getdata(datafn)
-    umask_data = unsharp_mask(data, smr=smr)
+    ## Check if datafn is a string or numpy.ndarray
+    ## For string, read in .FITS files using astropy
+    ## For numpy.ndarray, use it as data directly
+    if type(datafn) == str:
+        ## If datafn is a string (presumably path to .FITS file)
+        ## Read in the .FITS file using astropy
+        data = fits.getdata(datafn)
+    elif type(datafn) == np.ndarray:
+        ## If datafn is a numpy.ndarray
+        ## Use as data directly
+        data = datafn
+    else:
+        ## Unsupported data type --> TypeError
+        raise TypeError('datafn must be str or numpy.ndarray')
+    umask_data = unsharp_mask(data, smr=smr, rms_cutoff=rms_cutoff)
     
     # Geometry
     datay, datax = data.shape
