@@ -1,8 +1,6 @@
-==================================
-The Rolling Hough Transform (RHT)
-==================================
+# The Rolling Hough Transform (RHT)
 
-This is the Rolling Hough Transform, described in Clark, Peek, & Putman 2014, ApJ 789, 82 (arXiv:1312.1338). If use of the RHT results in a publication, please cite this work.
+This is the Rolling Hough Transform, described in [Clark, Peek, & Putman 2014](https://ui.adsabs.harvard.edu/abs/2014ApJ...789...82C/abstract), ApJ 789, 82 (arXiv:1312.1338). If use of the RHT results in a publication, please cite this work.
 
 For instructions on install, use, and more, please see http://seclark.github.io/RHT/.
 
